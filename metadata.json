@@ -1,0 +1,6 @@
+{
+  "name": "PlantHub",
+  "description": "Developer-inspired, GitHub-styled plant and cannabis growth tracker with care heatmaps, photoperiod timers, and 7-day progression photo vaults.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
