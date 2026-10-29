@@ -24,21 +24,30 @@ data class HeatmapGridData(
     val averagePerWeek: Double
 )
 
+/**
+ * HeatmapCalculator transforms raw [CareLog] database records into structured 2D contribution matrices.
+ *
+ * Responsibilities:
+ * - Aggregates care events into calendar day buckets ("yyyy-MM-dd").
+ * - Builds 16-week or 52-week calendar grids (weeks as columns, days of week as rows 0..6).
+ * - Assigns GitHub-style color intensity levels (0 = no activity, 1 = 1 log, 2 = 2 logs, 3 = 3 logs, 4 = 4+ logs).
+ * - Computes cultivation engagement metrics: total logged actions, current streak, longest streak, and weekly average.
+ */
 object HeatmapCalculator {
 
     private val keyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     private val displayFormat = SimpleDateFormat("EEE, MMM d, yyyy", Locale.US)
 
     /**
-     * Builds a 16-week matrix ending today.
-     * 16 columns (weeks), each column has 7 rows (Sunday to Saturday).
+     * Builds a standard 16-week matrix ending today.
+     * Generates 16 columns (weeks), with each column containing 7 day slots (Sunday to Saturday).
      */
     fun calculate16Weeks(logs: List<CareLog>): HeatmapGridData {
         return calculateWeeksMatrix(logs, weeksCount = 16)
     }
 
     /**
-     * Builds a yearly (52-week) matrix ending today.
+     * Builds an expanded full-year (52-week) matrix ending today for comprehensive season review.
      */
     fun calculateYearly(logs: List<CareLog>): HeatmapGridData {
         return calculateWeeksMatrix(logs, weeksCount = 52)

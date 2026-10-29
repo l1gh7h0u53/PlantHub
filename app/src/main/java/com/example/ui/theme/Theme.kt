@@ -70,7 +70,10 @@ fun PlantHubTheme(
                 dynamicDark.copy(
                     onSurface = androidx.compose.ui.graphics.Color(0xFFF0F6FC),
                     onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFFD0D7DE),
-                    onBackground = androidx.compose.ui.graphics.Color(0xFFF0F6FC)
+                    onBackground = androidx.compose.ui.graphics.Color(0xFFF0F6FC),
+                    onPrimaryContainer = androidx.compose.ui.graphics.Color(0xFFE8F5E9),
+                    onSecondaryContainer = androidx.compose.ui.graphics.Color(0xFFE6F4EA),
+                    onTertiaryContainer = androidx.compose.ui.graphics.Color(0xFFFFF8E1)
                 )
             } else {
                 dynamicLightColorScheme(context)

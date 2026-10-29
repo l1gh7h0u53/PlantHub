@@ -19,6 +19,15 @@ import com.example.R
 import com.example.data.model.LightCycleStatus
 import com.example.receiver.LightCycleAlarmReceiver
 
+/**
+ * NotificationHelper coordinates all local Android system notifications and exact alarms.
+ *
+ * Responsibilities:
+ * - Initializes notification channels for standard care alerts and persistent photoperiod live chips.
+ * - Supports Android 16 (API 36) Promoted Ongoing Live Updates with high-contrast status chips.
+ * - Schedules exact daily recurring care alarms via Android's AlarmManager (`setExactAndAllowWhileIdle`).
+ * - Formats rich notification payloads with progress meters, remaining countdowns, and deep-link intents.
+ */
 object NotificationHelper {
     const val CHANNEL_ID = "planthub_care_alerts"
     private const val CHANNEL_NAME = "PlantHub Cultivation Reminders"
@@ -31,6 +40,9 @@ object NotificationHelper {
     const val EXTRA_REQUEST_PROMOTED_ONGOING = "android.requestPromotedOngoing"
     const val EXTRA_SHORT_CRITICAL_TEXT = "android.shortCriticalText"
 
+    /**
+     * Creates the high-importance notification channel for daily watering, misting, and nutrient reminders.
+     */
     fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val importance = NotificationManager.IMPORTANCE_HIGH

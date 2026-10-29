@@ -91,6 +91,14 @@ fun HomeScreen(
     var bottomSheetPlant by remember { mutableStateOf<Plant?>(null) }
     var customLogPlant by remember { mutableStateOf<Plant?>(null) }
 
+    val requestOpenAddPlant by viewModel.requestOpenAddPlant.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(requestOpenAddPlant) {
+        if (requestOpenAddPlant) {
+            showAddDialog = true
+            viewModel.consumeAddPlantDialog()
+        }
+    }
+
     val lazyListState = rememberLazyListState()
     val isFabExpanded by remember {
         derivedStateOf {
@@ -435,7 +443,7 @@ private fun SpaciousPlantCard(
                 // Stage Badge - Tap to open detailed Stage Selection Dialog
                 Surface(
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    color = Color(0xFFA3F5B1), // Bright emerald filled container
                     modifier = Modifier
                         .clickable { showStageDialog = true }
                         .testTag("btn_stage_badge_${plant.id}")
@@ -449,12 +457,12 @@ private fun SpaciousPlantCard(
                             text = plant.stage.label,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                            color = Color(0xFF00210B) // Crisp deep forest dark text
                         )
                         Icon(
                             imageVector = Icons.Filled.Edit,
                             contentDescription = "Edit stage",
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            tint = Color(0xFF00210B), // High-contrast dark edit icon
                             modifier = Modifier.size(12.dp)
                         )
                     }
@@ -727,10 +735,10 @@ private fun SpaciousPlantCard(
                         val isSelected = plant.stage == stage
                         Surface(
                             shape = CircleShape,
-                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            color = if (isSelected) Color(0xFFA3F5B1) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                             border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                                if (isSelected) 1.5.dp else 0.8.dp,
+                                if (isSelected) Color(0xFF005221) else MaterialTheme.colorScheme.outlineVariant
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -750,29 +758,29 @@ private fun SpaciousPlantCard(
                                 ) {
                                     Surface(
                                         shape = CircleShape,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                        color = if (isSelected) Color(0xFF00210B) else MaterialTheme.colorScheme.outlineVariant,
                                         modifier = Modifier.size(7.dp)
                                     ) {}
                                     Text(
                                         text = stage.label,
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                        color = if (isSelected) Color(0xFF00210B) else MaterialTheme.colorScheme.onSurface
                                     )
                                 }
                                 Surface(
                                     shape = CircleShape,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
+                                    color = if (isSelected) Color(0xFF00210B) else MaterialTheme.colorScheme.surfaceVariant,
                                     border = androidx.compose.foundation.BorderStroke(
                                         0.6.dp,
-                                        if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant
+                                        if (isSelected) Color(0xFF00210B) else MaterialTheme.colorScheme.outlineVariant
                                     )
                                 ) {
                                     Text(
                                         text = "${stage.defaultOnHours}h / ${stage.defaultOffHours}h",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                        color = if (isSelected) Color(0xFFA3F5B1) else MaterialTheme.colorScheme.onSurface,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                     )
                                 }

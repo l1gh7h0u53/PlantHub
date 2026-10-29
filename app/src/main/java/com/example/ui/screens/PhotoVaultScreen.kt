@@ -459,11 +459,11 @@ fun PhotoVaultScreen(
                     color = if (isInitialWeek) {
                         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
                     } else {
-                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f)
+                        Color(0xFFF6BE48) // Solid, radiant bright amber container
                     },
                     border = androidx.compose.foundation.BorderStroke(
-                        0.6.dp,
-                        if (isInitialWeek) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.tertiary.copy(alpha = 0.4f)
+                        1.dp,
+                        if (isInitialWeek) MaterialTheme.colorScheme.outlineVariant else Color(0xFFD4971A)
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -474,14 +474,14 @@ fun PhotoVaultScreen(
                     ) {
                         Surface(
                             shape = CircleShape,
-                            color = if (isInitialWeek) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.tertiary,
+                            color = if (isInitialWeek) MaterialTheme.colorScheme.primaryContainer else Color(0xFF261900),
                             modifier = Modifier.size(32.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = if (isInitialWeek) Icons.Filled.LockOpen else Icons.Filled.Lock,
                                     contentDescription = null,
-                                    tint = if (isInitialWeek) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onTertiary,
+                                    tint = if (isInitialWeek) MaterialTheme.colorScheme.onPrimaryContainer else Color(0xFFF6BE48),
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
@@ -491,7 +491,7 @@ fun PhotoVaultScreen(
                                 text = if (isInitialWeek) "Week 1 Initial Mode" else "Weekly Milestone Lock Active",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isInitialWeek) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onTertiaryContainer
+                                color = if (isInitialWeek) MaterialTheme.colorScheme.onSurface else Color(0xFF261900)
                             )
                             Text(
                                 text = if (isInitialWeek) {
@@ -501,7 +501,7 @@ fun PhotoVaultScreen(
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 fontSize = 11.sp,
-                                color = if (isInitialWeek) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.95f)
+                                color = if (isInitialWeek) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f) else Color(0xFF261900).copy(alpha = 0.9f)
                             )
                         }
                     }
@@ -1234,27 +1234,27 @@ private fun ExpressiveMilestoneCard(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer
+                        color = Color(0xFFA3F5B1) // Bright emerald pill
                     ) {
                         Text(
                             text = "DAY ${entry.dayNumber}",
                             style = MaterialTheme.typography.labelSmall,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = Color(0xFF00210B), // Deep forest text
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                         )
                     }
 
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer
+                        color = Color(0xFFCEECCF) // Bright sage fill
                     ) {
                         Text(
                             text = entry.stage.label,
                             style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF00210B), // Deep forest text
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
@@ -1269,13 +1269,13 @@ private fun ExpressiveMilestoneCard(
 
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.tertiaryContainer
+                        color = Color(0xFFF6BE48) // Radiant amber fill
                     ) {
                         Text(
                             text = milestoneTag,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            color = Color(0xFF261900), // Sharp dark typography
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }

@@ -29,6 +29,17 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
+/**
+ * PlantBackupManager handles 100% offline serialization, archiving, and restoration of the PlantHub agronomic database.
+ *
+ * Key Capabilities:
+ * 1. Complete Self-Contained ZIP Bundles: Packages the entire SQLite Room database snapshot alongside original-resolution
+ *    milestone images stored in private internal app storage (/data/user/0/com.example/files/milestone_photos).
+ * 2. Standardized Formats: Supports JSON Database Backups and multi-table RFC-4180 CSV exports for spreadsheet analysis.
+ * 3. Zero-Knowledge / 100% Offline: Backups are written directly via Android Storage Access Framework (SAF)
+ *    to user-selected device storage or SD card. Zero network connections, zero telemetry, zero cloud exposure.
+ * 4. Automatic Rolling Backups: Background scheduling of weekly snapshots when configured by the grower.
+ */
 object PlantBackupManager {
     private const val TAG = "PlantBackupManager"
     private const val PREFS_NAME = "planthub_backup_prefs"
@@ -382,6 +393,16 @@ object PlantBackupManager {
         return "\"$escaped\""
     }
 
+    /**
+     * Exports the entire database to a destination Document File URI using UTF-8 encoding.
+     * Writes either structured JSON or multi-section RFC-4180 CSV based on the [isJson] flag.
+     *
+     * @param context Application context for accessing ContentResolver.
+     * @param uri Target Storage Access Framework file URI.
+     * @param isJson When true, formats as structured JSON; otherwise exports tabular CSV.
+     * @param repository Data repository to query live records from SQLite.
+     * @return True if file write completed successfully; false otherwise.
+     */
     suspend fun exportToFileUri(
         context: Context,
         uri: Uri,

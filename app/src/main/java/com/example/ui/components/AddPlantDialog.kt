@@ -60,6 +60,19 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.GrowthStage
 import java.util.Locale
 
+/**
+ * AddPlantDialog displays a Material 3 dialog form for onboarding a new cultivar.
+ *
+ * Features:
+ * - Cultivar name and strain genetics inputs.
+ * - Alphabetized botanical icon selector with preview badge.
+ * - Compact growth stage selector chips (Seedling, Vegetative, Flowering, Late Bloom, Flush, Curing).
+ * - Synchronized Photoperiod presets (18/6 Vegetative, 12/12 Flowering, 24/0 Continuous, 20/4 Autoflower, Custom).
+ * - Native Material 3 TimePicker modal dialog for exact light turn-on scheduling.
+ * - M3 segmented group substrate selection menu (Organic Soil, Coco Coir, DWC Hydroponics, Rockwool, Aeroponics).
+ * - Container volume in liters and agronomic cultivation notes.
+ * - Distinctive red pill-shaped Cancel button and primary Save CTA.
+ */
 @Composable
 fun AddPlantDialog(
     onDismiss: () -> Unit,

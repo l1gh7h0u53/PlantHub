@@ -32,6 +32,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.CareActionType
 
+/**
+ * AddCareLogDialog provides a Material 3 dialog for recording agronomic maintenance events.
+ *
+ * Supported Actions:
+ * - Water: Records irrigation volume (mL), runoff, and root zone moisture.
+ * - Nutrients: Logs fertilizer brand/formula, dosage (mL/L or g/gal), pH level, and electrical conductivity (EC/PPM).
+ * - Training: Tracks low-stress training (LST), topping, scrog weaving, and defoliation.
+ * - Pruning: Records canopy cleanup, lollipop pruning, and senescence leaf removal.
+ * - Pest Management: Logs IPM preventative foliar sprays or beneficial biological applications.
+ * - Transplant: Records container up-potting events and substrate volume updates.
+ * - Flush: Tracks pure RO/dechlorinated water clearing prior to harvest.
+ */
 @Composable
 fun AddCareLogDialog(
     plantName: String,

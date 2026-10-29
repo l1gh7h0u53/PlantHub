@@ -110,6 +110,23 @@ private val OnboardingSteps = listOf(
     )
 )
 
+/**
+ * OnboardingScreen provides an interactive, M3-styled multi-step introductory tour for new users.
+ *
+ * Core Sections:
+ * 1. Precision Photoperiod: Explains lighting & dark phase timers and biological cycle configuration.
+ * 2. Care Activity Ledger: Demonstrates GitHub-style commit heatmaps, hydration, pH/EC telemetry, and pruning logs.
+ * 3. Milestone Photo Vault: Shows how weekly photographic checkpoints track morphology and canopy height.
+ * 4. Full-Fidelity Backups: Illustrates 100% offline standalone ZIP bundles and multi-table CSV imports.
+ *
+ * Actions:
+ * - Skip: Exits walkthrough directly to the garden home screen.
+ * - Start with Sample Data: Populates sample cultivars to explore features immediately.
+ * - Add First Plant: Completes onboarding and triggers the AddPlantDialog immediately on the home screen.
+ *
+ * @param onComplete Callback invoked when onboarding finishes. Passing true signals the home screen to open the Add Plant modal.
+ * @param modifier Composable layout modifier.
+ */
 @Composable
 fun OnboardingScreen(
     onComplete: (openAddPlant: Boolean) -> Unit,

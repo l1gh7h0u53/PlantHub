@@ -47,10 +47,24 @@ enum class HeatmapViewMode {
     WEEKS_16, YEARLY, MONTHLY
 }
 
+/**
+ * PlantViewModel is the central presentation and state management coordinator for PlantHub.
+ *
+ * Responsibilities:
+ * - Exposes reactive UI [StateFlow] streams for plants, logs, photos, and lighting statuses.
+ * - Manages cultivar lifecycle operations (create, edit, delete, stage transitions).
+ * - Drives the real-time photoperiod calculation ticker and synchronizes Android 16 Live Updates.
+ * - Orchestrates one-tap care logging (Water, Nutrients, Defoliation, LST, Flush, Misting).
+ * - Manages the Milestone Photo Progression Vault and canopy growth analytics.
+ * - Handles universal data backup and restore operations (Full ZIP bundles, multi-table CSV, and JSON).
+ * - Persists and manages user preferences (theming, reminders, and automated weekly backups).
+ */
 class PlantViewModel(application: Application) : AndroidViewModel(application) {
 
+    // Repository mediating access to on-device Room SQLite database
     private val repository: PlantRepository = PlantRepository(AppDatabase.getDatabase(application))
 
+    // Reactive streams observing database changes
     val allPlants: StateFlow<List<Plant>> = repository.allPlants
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -60,14 +74,18 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
     val allPhotos: StateFlow<List<PhotoEntry>> = repository.allPhotos
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Currently focused cultivar identifier
     private val _selectedPlantId = MutableStateFlow<Long?>(null)
     val selectedPlantId: StateFlow<Long?> = _selectedPlantId.asStateFlow()
 
+    // Currently active bottom navigation tab
     private val _currentTab = MutableStateFlow(NavTab.HOME)
     val currentTab: StateFlow<NavTab> = _currentTab.asStateFlow()
 
+    // Persistent on-device SharedPreferences for client preferences
     private val prefs = application.getSharedPreferences("planthub_prefs", Context.MODE_PRIVATE)
 
+    // User selected theme mode (System, Dark, or Light)
     private val initialThemeMode: ThemeMode = try {
         val saved = prefs.getString("key_theme_mode", ThemeMode.DARK.name)
         ThemeMode.valueOf(saved ?: ThemeMode.DARK.name)
@@ -77,14 +95,17 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
     private val _themeMode = MutableStateFlow(initialThemeMode)
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
 
+    // Android 12+ Monet dynamic wallpaper color theming toggle
     private val initialDynamicColor = prefs.getBoolean("key_dynamic_color", false)
     private val _dynamicColor = MutableStateFlow(initialDynamicColor)
     val dynamicColor: StateFlow<Boolean> = _dynamicColor.asStateFlow()
 
+    // Daily care reminder alarms toggle
     private val initialCareReminders = prefs.getBoolean("key_care_reminders_enabled", true)
     private val _careRemindersEnabled = MutableStateFlow(initialCareReminders)
     val careRemindersEnabled: StateFlow<Boolean> = _careRemindersEnabled.asStateFlow()
 
+    // Timeline filtering preference (show only today vs. all historical care actions)
     private val initialTimelineShowOnlyToday = prefs.getBoolean("key_timeline_show_only_today", true)
     private val _timelineShowOnlyToday = MutableStateFlow(initialTimelineShowOnlyToday)
     val timelineShowOnlyToday: StateFlow<Boolean> = _timelineShowOnlyToday.asStateFlow()
@@ -204,7 +225,14 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Timer loop to update photoperiod countdown every second and check cycle maintenance completion
+        // TECHNICAL LOGIC & ARCHITECTURAL DESIGN: Dual-Cadence Photoperiod Ticker
+        // 1. One-Second UI Pulse (_clockTicker):
+        //    Updates the in-memory StateFlow timestamp every 1000ms. UI Composables (TimerScreen and gauges)
+        //    observe this ticker to compute smooth, jitter-free countdown text without writing to SQLite.
+        // 2. Three-Second Evaluation Batching:
+        //    Evaluating database state every second causes unnecessary SQLite I/O and battery drain.
+        //    Instead, we inspect active cultivars every 3 seconds to check if a 24h photoperiod has concluded,
+        //    transitioning the plant to `isPausedForMaintenance = true` and dispatching dark cycle alerts.
         viewModelScope.launch {
             var tickCount = 0
             var wasLiveNotificationActive = false
@@ -216,7 +244,7 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
                 _clockTicker.value = System.currentTimeMillis()
                 tickCount++
 
-                // Every 3 seconds, evaluate if any actively running plant reached the end of its off-cycle and sync Live Update
+                // Batch check: evaluate 24-hour cycle completion and live notification sync every 3 seconds
                 if (tickCount % 3 == 0) {
                     val currentPlants = repository.getAllPlantsOnce()
                     val now = System.currentTimeMillis()
@@ -226,7 +254,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
                             if (totalSec > 0) {
                                 val elapsedSec = (now - plant.timerStartedAt) / 1000L
                                 if (elapsedSec >= totalSec) {
-                                    // Full cycle is complete! Automatically pause for plant maintenance
+                                    // DESIGN DECISION: Safety Lockout on Cycle Completion
+                                    // Cultivar has completed both ON and OFF durations. Set `isPausedForMaintenance = true`
+                                    // so lights do not unexpectedly turn on while tent is sealed or dark.
                                     val pausedPlant = plant.copy(
                                         isTimerRunning = false,
                                         isPausedForMaintenance = true,
@@ -314,6 +344,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putBoolean("key_dynamic_color", enabled).apply()
     }
 
+    /**
+     * Records a one-tap quick watering event for the specified plant.
+     */
     fun quickWater(plantId: Long, amountMl: Int = 500) {
         viewModelScope.launch {
             val log = CareLog(
@@ -327,6 +360,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Records a one-tap foliar misting event for canopy humidity maintenance.
+     */
     fun quickMist(plantId: Long) {
         viewModelScope.launch {
             val log = CareLog(
@@ -339,6 +375,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Records a standard routine organic/mineral nutrient feeding event.
+     */
     fun quickFertilize(plantId: Long, name: String = "Balanced Organic NPK", dose: String = "2mL/L") {
         viewModelScope.launch {
             val log = CareLog(
@@ -353,6 +392,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Records a comprehensive care log with telemetry (pH, EC/PPM, nutrients, and notes).
+     */
     fun addCareLog(
         plantId: Long,
         actionType: CareActionType,
@@ -379,6 +421,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Creates and persists a new cultivar profile in local SQLite storage.
+     */
     fun addPlant(
         name: String,
         strain: String,
@@ -412,12 +457,18 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Updates an existing cultivar profile with modified parameters.
+     */
     fun updatePlant(plant: Plant) {
         viewModelScope.launch {
             repository.updatePlant(plant)
         }
     }
 
+    /**
+     * Deletes a plant and deselects it if currently active.
+     */
     fun deletePlant(plant: Plant) {
         viewModelScope.launch {
             repository.deletePlant(plant)
@@ -427,6 +478,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Updates the growth stage for a cultivar (e.g. Vegetative to Flowering).
+     */
     fun updatePlantStage(plantId: Long, stage: GrowthStage) {
         viewModelScope.launch {
             val plant = repository.getPlantOnce(plantId) ?: return@launch
@@ -435,6 +489,17 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Starts or resumes the photoperiod light timer for a cultivar.
+     *
+     * TECHNICAL LOGIC: Clock-Drift Prevention
+     * When resuming from a paused state ([timerPausedRemainingSec] != null):
+     * - We derive `elapsedSec = totalOnSec - timerPausedRemainingSec`.
+     * - We compute `adjustedStartedAt = now - (elapsedSec * 1000L)`.
+     * - By shifting the simulated start epoch into the past by the previously elapsed duration,
+     *   the timer resumes seamlessly with ZERO clock drift and exact sub-second precision.
+     * Also initiates the foreground ticker service when live updates are enabled.
+     */
     fun startLightTimer(plantId: Long) {
         viewModelScope.launch {
             val plant = repository.getPlantOnce(plantId) ?: return@launch
@@ -459,10 +524,21 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Resumes timer from cycle-complete maintenance mode.
+     */
     fun resumeFromMaintenance(plantId: Long) {
         startLightTimer(plantId)
     }
 
+    /**
+     * Pauses the photoperiod timer.
+     *
+     * DESIGN DECISION: Preserving Exact Countdown State Across Process Restarts
+     * - Captures remaining seconds in active phase into [timerPausedRemainingSec].
+     * - Nullifies active execution so the UI renders the frozen gauge.
+     * - Stops the live notification ticker service to prevent background battery draw while paused.
+     */
     fun pauseLightTimer(plantId: Long) {
         viewModelScope.launch {
             val plant = repository.getPlantOnce(plantId) ?: return@launch
@@ -479,6 +555,10 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Resets the photoperiod timer back to unstarted standby state ("Waiting to Start").
+     * Clears all start epoch timestamps and pause buffers, canceling active live notifications.
+     */
     fun resetLightTimer(plantId: Long) {
         viewModelScope.launch {
             val plant = repository.getPlantOnce(plantId) ?: return@launch
@@ -519,6 +599,14 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putBoolean("key_settings_privacy_expanded", expanded).apply()
     }
 
+    /**
+     * Evaluates root zone dry-back intervals and dispatches watering reminders.
+     *
+     * TECHNICAL LOGIC:
+     * - Filters care logs for previous hydration events ([CareActionType.WATER] or [CareActionType.FERTILIZE]).
+     * - If elapsed duration since last watering exceeds the 48-hour agronomic threshold (or 48h since planting
+     *   if never watered), dispatches a localized notification to prevent root desiccation.
+     */
     fun checkAndTriggerWateringReminders() {
         viewModelScope.launch {
             if (!_careRemindersEnabled.value) return@launch
@@ -641,6 +729,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Computes the 1-indexed biological calendar day for a cultivar from its planted timestamp.
+     */
     fun calculateCalendarDay(plantedDate: Long, targetDate: Long = System.currentTimeMillis()): Int {
         val calStart = java.util.Calendar.getInstance().apply {
             timeInMillis = plantedDate
@@ -661,6 +752,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         return (days.coerceAtLeast(0) + 1)
     }
 
+    /**
+     * Exports SQLite database tables to a user-selected file URI in JSON or CSV format.
+     */
     fun exportDatabaseToUri(uri: Uri, isJson: Boolean, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val success = PlantBackupManager.exportToFileUri(getApplication(), uri, isJson, repository)
@@ -668,6 +762,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Packages the complete SQLite database and all original-resolution milestone photos into a portable .zip bundle.
+     */
     fun exportCompleteZipBackup(uri: Uri, onResult: (Boolean) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             val success = PlantBackupManager.exportCompleteZipBackup(getApplication(), uri, repository)
@@ -677,6 +774,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Parses and inspects an external backup file (ZIP, CSV, or JSON) to generate an import preview.
+     */
     fun parseImportFile(
         uri: Uri,
         isJson: Boolean,
@@ -690,22 +790,35 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Restores the complete application state from an imported backup dataset.
+     * Supports both portable ZIP archives (containing images and metadata) and raw JSON/CSV imports.
+     * Resets local preferences, reactivates the primary plant, and reschedules system alarms.
+     *
+     * @param data Parsed backup payload containing plants, care logs, and photo vault entries.
+     * @param onResult Callback delivering success flag and localized summary status message.
+     */
     fun restoreDatabaseFromImport(
         data: PlantBackupManager.ImportPreviewData,
         onResult: (Boolean, String) -> Unit
     ) {
         viewModelScope.launch {
+            // Unpack ZIP archive or insert parsed entities into Room tables
             val success = if (data.sourceFormat == "ZIP Bundle" && data.sourceUri != null) {
                 PlantBackupManager.restoreDatabaseFromZip(getApplication(), repository, data, data.sourceUri)
             } else {
                 PlantBackupManager.restoreDatabaseFromData(getApplication(), repository, data)
             }
             if (success) {
+                // Refresh local state: select the first restored cultivar and reset timeline filter
                 val freshPlants = repository.getAllPlantsOnce()
                 freshPlants.firstOrNull()?.let { selectPlant(it.id) }
                 _timelineShowOnlyToday.value = false
                 prefs.edit().putBoolean("key_timeline_show_only_today", false).apply()
+
+                // Re-arm local Android alarms for watering and light cycles
                 NotificationHelper.scheduleDailyCareAlerts(getApplication())
+
                 val photoDetail = if (data.bundledImagesCount > 0) {
                     "${data.bundledImagesCount} full-resolution photos"
                 } else {
@@ -718,6 +831,18 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Persists a visual milestone entry with associated botanical stage, canopy height, and notes.
+     * Automatically calculates the calendar day number relative to the plant's inception if not specified.
+     *
+     * @param plantId Unique database identifier of the cultivar.
+     * @param imageUri File URI pointing to the sandbox-stored photo asset.
+     * @param stage Phenological growth stage active when photo was captured.
+     * @param title Short descriptive headline for the gallery card.
+     * @param observation Qualitative agronomic notes (e.g. trichome coloration, pest check).
+     * @param canopyHeightCm Measured vertical height of the apex canopy in centimeters.
+     * @param customDayNumber Optional overridden day count; defaults to elapsed days since planting.
+     */
     fun addPhotoEntry(
         plantId: Long,
         imageUri: String,
@@ -747,18 +872,28 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Updates metadata or notes on an existing photo vault record.
+     */
     fun updatePhotoEntry(entry: PhotoEntry) {
         viewModelScope.launch {
             repository.updatePhotoEntry(entry)
         }
     }
 
+    /**
+     * Permanently deletes a photo vault entry from the local database.
+     */
     fun deletePhotoEntry(entry: PhotoEntry) {
         viewModelScope.launch {
             repository.deletePhotoEntry(entry)
         }
     }
 
+    /**
+     * Resets the entire Room database with fresh starter cultivars, logs, and photoperiod schedules.
+     * Clears all existing user records and writes an initial offline backup snapshot.
+     */
     fun resetDatabaseWithSampleData() {
         viewModelScope.launch {
             val plants = repository.getAllPlantsOnce()
@@ -772,6 +907,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Dispatches an immediate test care notification for diagnostic and notification channel verification.
+     */
     fun triggerTestNotification(context: Context) {
         val currentPlant = selectedPlant.value ?: allPlants.value.firstOrNull()
         val name = currentPlant?.name ?: "Cultivar"
@@ -784,6 +922,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    /**
+     * Dispatches a test maintenance alert warning the grower of active dark cycle or timer maintenance.
+     */
     fun triggerTestMaintenanceAlert(context: Context) {
         val currentPlant = selectedPlant.value ?: allPlants.value.firstOrNull()
         val name = currentPlant?.name ?: "Cultivar"
@@ -796,6 +937,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    /**
+     * Dispatches a test watering reminder alert notifying the grower that root zone dry-back has completed.
+     */
     fun triggerTestWateringDueAlert(context: Context) {
         val currentPlant = selectedPlant.value ?: allPlants.value.firstOrNull()
         val name = currentPlant?.name ?: "Cultivar"
@@ -808,6 +952,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    /**
+     * Tests Android 16 ongoing Live Update notification capabilities with simulated or live photoperiod progress.
+     */
     fun triggerTestLiveUpdateAlert(context: Context) {
         // Use currently selected plant, fallback to first active running plant, or first plant in list
         val targetPlant = selectedPlant.value
