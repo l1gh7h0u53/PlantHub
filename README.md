@@ -2,7 +2,7 @@
 
 > **Privacy-First, 100% Offline Botanical Cultivation Tracker & Lifecycle Ledger**
 
-PlantHub is a zero-trust, local-first Android application designed for craft growers and plant enthusiasts. It operates with zero network permissions, storing all records, care metrics, telemetry, and high-resolution photos strictly inside the device's local sandbox.
+PlantHub is a vibe coded zero-trust, local-first Android application designed for craft growers and plant enthusiasts. It operates with zero network permissions, storing all records, care metrics, telemetry, and high-resolution photos strictly inside the device's local sandbox.
 
 ---
 
