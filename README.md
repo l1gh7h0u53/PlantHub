@@ -4,7 +4,7 @@
 
 PlantHub is a vibe coded zero-trust, local-first Android application designed for craft growers and plant enthusiasts. It operates with zero network permissions, storing all records, care metrics, telemetry, and high-resolution photos strictly inside the device's local sandbox.
 
-[![Version](https://img.shields.io/badge/version-1.7.0-blue.svg)](https://github.com/l1gh7h0u53/planthub/releases/tag/v1.7.0)
+[![Version](https://img.shields.io/badge/version-1.8.0-blue.svg)](https://github.com/l1gh7h0u53/planthub/releases/tag/v1.8.0)
 [![Kotlin](https://img.shields.io/badge/Kotlin-100%25-7F52FF.svg)](https://kotlinlang.org/)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4.svg)](https://developer.android.com/jetpack/compose)
 [![Material 3](https://img.shields.io/badge/Material%20Design-M3%20Expressive-7B1FA2.svg)](https://m3.material.io/)

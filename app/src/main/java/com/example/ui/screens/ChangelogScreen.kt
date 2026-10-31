@@ -83,8 +83,43 @@ data class FriendlyRelease(
 
 val AppReleases = listOf(
     FriendlyRelease(
-        version = "v1.7",
+        version = "v1.8.0",
         status = "CURRENT",
+        releaseTitle = "Technical Logic Architecture, Security Audit Certification, Open-Source Licensing & Engine Polish",
+        date = "October 2026",
+        heroIcon = Icons.Filled.Code,
+        highlights = listOf(
+            FriendlyHighlight(
+                title = "Comprehensive Technical Logic & Inline Architectural Comments",
+                description = "Added extensive KDoc and mathematical notes across all Room DAOs, AppDatabase, LightCycleEngine, and PlantViewModel explaining 24h circular modulo timers, epoch drift compensation, cascade foreign keys, and O(1) dry-back index queries.",
+                icon = Icons.Filled.Code
+            ),
+            FriendlyHighlight(
+                title = "100% Offline Air-Gapped Security Verification & MIT License",
+                description = "Conducted rigorous security and manifest audit confirming zero network permissions, zero external telemetry or secret leaks, strict local SQLite/photo sandboxing, and official MIT open-source licensing.",
+                icon = Icons.Filled.Lock
+            ),
+            FriendlyHighlight(
+                title = "High-Contrast Dark Mode & Monet Dynamic Contrast Guarantee",
+                description = "Solid bright filled containers with high-contrast dark text (#261900 / #00210B) across Photo Vault milestone lock banners and cultivar growth stages, plus 100% luminance unselected navigation tabs.",
+                icon = Icons.Filled.Palette
+            ),
+            FriendlyHighlight(
+                title = "Enhanced Photoperiod State Machine & Drift Prevention",
+                description = "Mathematically validated pause/resume epoch shifts guaranteeing zero sub-second time loss or clock drift across device reboots and background lifecycle transitions.",
+                icon = Icons.Filled.Timer
+            ),
+            FriendlyHighlight(
+                title = "Production Packaging & Version Bump",
+                description = "Elevated internal application engine to v1.8.0 (versionCode 9) with synchronized settings badges, documentation headers, and release manifests.",
+                icon = Icons.Filled.AutoAwesome
+            )
+        ),
+        architecturalSummary = "Inline Technical Logic Documentation • 100% Offline Air-Gap Verification • MIT License Integration • Monet AAA Contrast Tokens • Epoch Drift Compensation • Sub-Second Timer Precision • App Version 1.8.0"
+    ),
+    FriendlyRelease(
+        version = "v1.7",
+        status = "STABLE",
         releaseTitle = "Interactive Onboarding Tour, Collapsible Export/Import Hub, Cultivar Ergonomics & High-Contrast System",
         date = "October 2026",
         heroIcon = Icons.Filled.Spa,

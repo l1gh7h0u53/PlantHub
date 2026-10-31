@@ -1069,7 +1069,7 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.primaryContainer
                         ) {
                             Text(
-                                text = "v1.7 Current",
+                                text = "v1.8.0 Current",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1077,7 +1077,7 @@ fun SettingsScreen(
                             )
                         }
                         Text(
-                            text = "Onboarding, Cultivar Ergonomics & Readability",
+                            text = "Technical Logic, Offline Audit & Security",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -1207,7 +1207,7 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.tertiaryContainer
                         ) {
                             Text(
-                                text = "v1.7 Active",
+                                text = "v1.8.0 Active",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer,
