@@ -382,7 +382,7 @@ fun SettingsScreen(
                                     )
                                 }
                             }
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "2-Day Care & Watering Alerts",
                                     style = MaterialTheme.typography.bodyMedium,
@@ -488,7 +488,7 @@ fun SettingsScreen(
                                     )
                                 }
                             }
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "Live Timer Status Chip",
                                     style = MaterialTheme.typography.bodyMedium,
@@ -655,7 +655,7 @@ fun SettingsScreen(
                                     )
                                 }
                             }
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "Database Safekeeping & Backup",
                                     style = MaterialTheme.typography.titleSmall,
@@ -734,14 +734,14 @@ fun SettingsScreen(
                                                 tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(20.dp)
                                             )
-                                            Column {
+                                            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                                                 Text(
                                                     text = "Destination Folder",
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                                 Text(
-                                                    text = backupFolderName ?: "Tap 'Select' to pick folder",
+                                                    text = backupFolderName ?: "No folder selected",
                                                     style = MaterialTheme.typography.bodySmall,
                                                     fontWeight = FontWeight.SemiBold,
                                                     color = if (backupFolderName != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary,
@@ -828,6 +828,9 @@ fun SettingsScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
@@ -845,7 +848,7 @@ fun SettingsScreen(
                                             )
                                         }
                                     }
-                                    Column {
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = "Export/Import",
                                             style = MaterialTheme.typography.titleSmall,
@@ -1061,6 +1064,9 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -1077,10 +1083,13 @@ fun SettingsScreen(
                             )
                         }
                         Text(
-                            text = "Technical Logic, Offline Audit & Security",
+                            text = "KMP/CMP, Logic & Security",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
                     }
 
@@ -1199,6 +1208,9 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -1218,7 +1230,10 @@ fun SettingsScreen(
                             text = "Zero-Cloud Guarantee",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
                     }
 

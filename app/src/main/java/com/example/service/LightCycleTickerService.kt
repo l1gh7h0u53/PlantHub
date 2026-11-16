@@ -9,6 +9,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.ServiceCompat
 import com.example.data.local.AppDatabase
+import com.example.data.local.getDatabase
 import com.example.util.LightCycleEngine
 import com.example.util.NotificationHelper
 import kotlinx.coroutines.CoroutineScope

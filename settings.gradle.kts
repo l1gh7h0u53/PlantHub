@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 rootProject.name = "PlantHub"
 
 include(":app")
+include(":shared")

@@ -158,7 +158,7 @@ fun PhotoVaultScreen(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Select a plant to inspect the photo progression vault.",
+                        text = "Add or choose a plant in Plants to store milestone photos.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
                     )
@@ -423,34 +423,29 @@ fun PhotoVaultScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Text(
+                        text = if (isInitialWeek) "Early Growth Timeline (${milestonePhotos.size})" else "Weekly Milestone Timeline (${milestonePhotos.size})",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp)
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isInitialWeek) MaterialTheme.colorScheme.secondaryContainer else Color(0xFFF6BE48)
                     ) {
                         Text(
-                            text = if (isInitialWeek) "Early Growth Timeline (${milestonePhotos.size})" else "Weekly Milestone Timeline (${milestonePhotos.size})",
-                            style = MaterialTheme.typography.titleMedium,
+                            text = if (isInitialWeek) "Week 1 Open" else "7-Day Lock",
+                            style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
+                            color = if (isInitialWeek) MaterialTheme.colorScheme.onSecondaryContainer else Color(0xFF261900),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                         )
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isInitialWeek) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.tertiaryContainer
-                        ) {
-                            Text(
-                                text = if (isInitialWeek) "Week 1 Open" else "7-Day Lock",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isInitialWeek) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
                     }
-                    Text(
-                        text = "Tap photo to inspect",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
 
                 // Status Banner explaining the 7-day milestone lock
@@ -543,7 +538,7 @@ fun PhotoVaultScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Tap the camera button to capture or attach a photo to document your first canopy checkpoint. A 7-day review will unlock after two checkpoints.",
+                            text = "Capture or attach your first canopy checkpoint using the camera button below. A 7-day review unlocks after two checkpoints.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
                             modifier = Modifier.padding(horizontal = 8.dp)
@@ -1227,9 +1222,9 @@ private fun ExpressiveMilestoneCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
-                Row(
+                FlowRow(
                     modifier = Modifier.weight(1f).padding(end = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Surface(
@@ -1284,7 +1279,7 @@ private fun ExpressiveMilestoneCard(
                         text = entry.title,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurface
                     )

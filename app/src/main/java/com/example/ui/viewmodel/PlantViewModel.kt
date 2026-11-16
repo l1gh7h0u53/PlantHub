@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
+import com.example.data.local.getDatabase
 import com.example.data.model.CareActionType
 import com.example.data.model.CareLog
 import com.example.data.model.GrowthStage
@@ -32,20 +33,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class NavTab(val title: String) {
-    HOME("Plants"),
-    DETAIL("Tracker"),
-    VAULT("Vault"),
-    SETTINGS("Settings")
-}
-
-enum class ThemeMode {
-    SYSTEM, DARK, LIGHT
-}
-
-enum class HeatmapViewMode {
-    WEEKS_16, YEARLY, MONTHLY
-}
+// NavTab, ThemeMode, and HeatmapViewMode are shared across KMP targets in com.example.ui.viewmodel.SharedEnums.kt
 
 /**
  * PlantViewModel is the central presentation and state management coordinator for PlantHub.
@@ -249,10 +237,11 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
                     val currentPlants = repository.getAllPlantsOnce()
                     val now = System.currentTimeMillis()
                     for (plant in currentPlants) {
-                        if (plant.isTimerRunning && plant.timerStartedAt != null) {
+                        val startedAt = plant.timerStartedAt
+                        if (plant.isTimerRunning && startedAt != null) {
                             val totalSec = (plant.lightOnHours + plant.lightOffHours) * 3600L
                             if (totalSec > 0) {
-                                val elapsedSec = (now - plant.timerStartedAt) / 1000L
+                                val elapsedSec = (now - startedAt) / 1000L
                                 if (elapsedSec >= totalSec) {
                                     // DESIGN DECISION: Safety Lockout on Cycle Completion
                                     // Cultivar has completed both ON and OFF durations. Set `isPausedForMaintenance = true`
@@ -504,9 +493,10 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val plant = repository.getPlantOnce(plantId) ?: return@launch
             val now = System.currentTimeMillis()
-            val adjustedStartedAt = if (plant.timerPausedRemainingSec != null && !plant.isPausedForMaintenance) {
+            val pausedRemaining = plant.timerPausedRemainingSec
+            val adjustedStartedAt = if (pausedRemaining != null && !plant.isPausedForMaintenance) {
                 val totalOnSec = plant.lightOnHours * 3600L
-                val elapsedSec = (totalOnSec - plant.timerPausedRemainingSec).coerceAtLeast(0L)
+                val elapsedSec = (totalOnSec - pausedRemaining).coerceAtLeast(0L)
                 now - (elapsedSec * 1000L)
             } else {
                 now

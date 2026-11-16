@@ -90,6 +90,16 @@ val AppReleases = listOf(
         heroIcon = Icons.Filled.Code,
         highlights = listOf(
             FriendlyHighlight(
+                title = "Kotlin Multiplatform (KMP) & Compose Multiplatform Core",
+                description = "Migrated the Room SQLite database (with BundledSQLiteDriver), domain models, photoperiod engine, heatmap calculator, theme tokens, and shared CMP UI components into :shared targeting Android, Desktop JVM, and iOS.",
+                icon = Icons.Filled.Storage
+            ),
+            FriendlyHighlight(
+                title = "Redesigned Feature Tour & Collision-Free Alignment",
+                description = "Rewrote the Feature & Functions Tour with friendly bullet cards and spaced Simple Guide / Technical Details sections, removed obvious tap/unfold hints, and added flexible weight bounds across Settings and Vault headers.",
+                icon = Icons.Filled.Spa
+            ),
+            FriendlyHighlight(
                 title = "Comprehensive Technical Logic & Inline Architectural Comments",
                 description = "Added extensive KDoc and mathematical notes across all Room DAOs, AppDatabase, LightCycleEngine, and PlantViewModel explaining 24h circular modulo timers, epoch drift compensation, cascade foreign keys, and O(1) dry-back index queries.",
                 icon = Icons.Filled.Code
@@ -103,19 +113,9 @@ val AppReleases = listOf(
                 title = "High-Contrast Dark Mode & Monet Dynamic Contrast Guarantee",
                 description = "Solid bright filled containers with high-contrast dark text (#261900 / #00210B) across Photo Vault milestone lock banners and cultivar growth stages, plus 100% luminance unselected navigation tabs.",
                 icon = Icons.Filled.Palette
-            ),
-            FriendlyHighlight(
-                title = "Enhanced Photoperiod State Machine & Drift Prevention",
-                description = "Mathematically validated pause/resume epoch shifts guaranteeing zero sub-second time loss or clock drift across device reboots and background lifecycle transitions.",
-                icon = Icons.Filled.Timer
-            ),
-            FriendlyHighlight(
-                title = "Production Packaging & Version Bump",
-                description = "Elevated internal application engine to v1.8.0 (versionCode 9) with synchronized settings badges, documentation headers, and release manifests.",
-                icon = Icons.Filled.AutoAwesome
             )
         ),
-        architecturalSummary = "Inline Technical Logic Documentation • 100% Offline Air-Gap Verification • MIT License Integration • Monet AAA Contrast Tokens • Epoch Drift Compensation • Sub-Second Timer Precision • App Version 1.8.0"
+        architecturalSummary = "Kotlin Multiplatform (:shared Android/Desktop/iOS) • Room KMP & BundledSQLiteDriver • Redesigned Bullet Feature Tour • Inline Technical Logic Documentation • Monet AAA Contrast Tokens • App Version 1.8.0"
     ),
     FriendlyRelease(
         version = "v1.7",
