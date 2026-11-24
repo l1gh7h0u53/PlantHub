@@ -54,23 +54,32 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.LightCycleStatus
-import com.example.ui.theme.GithubHeatmapColors
+import com.example.ui.theme.LocalAccessibilitySuite
 import com.example.util.formatHms
 import kotlin.math.PI
 import kotlin.math.sin
 
 /**
  * Multiplatform real-time photoperiod HUD gauge and M3 Expressive undulating wave indicator.
+ *
+ * Adapts automatically via [LocalAccessibilitySuite]:
+ * - Uses vision-safe ON/OFF/Maintenance palette contrasts when OS Color Correction is active.
+ * - Renders a dashed waveform path for non-active/OFF states alongside phase iconography so
+ *   lighting states remain distinct without color perception.
+ * - Merges countdown telemetry into unified TalkBack semantics.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -83,6 +92,7 @@ fun LightCycleGauge(
 ) {
     if (status == null) return
 
+    val a11y = LocalAccessibilitySuite.current
     val isLightsOn = status.isLightOn
     val isWaiting = status.isWaitingToStart
     val isRunning = status.isTimerRunning
@@ -91,35 +101,35 @@ fun LightCycleGauge(
     var showResumeConfirm by remember { mutableStateOf(false) }
 
     val badgeBgColor = when {
-        isMaintenance -> Color(0xFF38260D)
+        isMaintenance -> a11y.maintenanceBadgeBg
         isWaiting -> MaterialTheme.colorScheme.surfaceVariant
-        !isRunning -> Color(0xFF2E2214)
-        isLightsOn -> Color(0xFF332A00)
-        else -> Color(0xFF1E2836)
+        !isRunning -> a11y.maintenanceBadgeBg
+        isLightsOn -> a11y.lightsOnBadgeBg
+        else -> a11y.lightsOffBadgeBg
     }
 
     val badgeTextColor = when {
-        isMaintenance -> Color(0xFFFFB74D)
+        isMaintenance -> a11y.maintenanceBadgeContent
         isWaiting -> MaterialTheme.colorScheme.onSurfaceVariant
-        !isRunning -> Color(0xFFFFB74D)
-        isLightsOn -> GithubHeatmapColors.LightsOn
-        else -> Color(0xFF90CAF9)
+        !isRunning -> a11y.maintenanceBadgeContent
+        isLightsOn -> a11y.lightsOnBadgeContent
+        else -> a11y.lightsOffBadgeContent
     }
 
     val indicatorColor = when {
-        isMaintenance -> Color(0xFFFFB74D)
+        isMaintenance -> a11y.maintenanceAccent
         isWaiting -> MaterialTheme.colorScheme.outlineVariant
-        !isRunning -> Color(0xFFFFB74D)
-        isLightsOn -> GithubHeatmapColors.LightsOn
-        else -> Color(0xFF64B5F6)
+        !isRunning -> a11y.maintenanceAccent
+        isLightsOn -> a11y.lightsOnAccent
+        else -> a11y.lightsOffAccent
     }
 
     Surface(
         shape = RoundedCornerShape(28.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(
-            1.2.dp,
-            if (isRunning && isLightsOn) GithubHeatmapColors.LightsOn.copy(alpha = 0.5f)
+            if (a11y.state.highContrastText) 1.5.dp else 1.2.dp,
+            if (isRunning && isLightsOn) a11y.lightsOnAccent.copy(alpha = 0.65f)
             else MaterialTheme.colorScheme.outlineVariant
         ),
         modifier = modifier
@@ -187,8 +197,17 @@ fun LightCycleGauge(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            val formattedRemaining = formatHms(
+                hours = status.hoursRemainingInPhase,
+                minutes = status.minutesRemainingInPhase,
+                seconds = status.secondsRemainingInPhase
+            )
             FlowRow(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "${status.currentPhaseName}, $formattedRemaining remaining, ${(status.phaseProgressPercent * 100).toInt()} percent elapsed, next switch ${status.nextSwitchTimeFormatted}"
+                    },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -203,11 +222,7 @@ fun LightCycleGauge(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = formatHms(
-                            hours = status.hoursRemainingInPhase,
-                            minutes = status.minutesRemainingInPhase,
-                            seconds = status.secondsRemainingInPhase
-                        ),
+                        text = formattedRemaining,
                         style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
@@ -343,8 +358,8 @@ fun LightCycleGauge(
                         },
                         shape = CircleShape,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isMaintenance) Color(0xFFFFB74D) else MaterialTheme.colorScheme.primary,
-                            contentColor = if (isMaintenance) Color(0xFF201505) else MaterialTheme.colorScheme.onPrimary
+                            containerColor = if (isMaintenance) a11y.maintenanceCtaBg else MaterialTheme.colorScheme.primary,
+                            contentColor = if (isMaintenance) a11y.maintenanceCtaContent else MaterialTheme.colorScheme.onPrimary
                         ),
                         modifier = Modifier
                             .weight(1f)
@@ -419,9 +434,10 @@ fun ExpressiveWavyProgressIndicator(
     isRunning: Boolean,
     isLightsOn: Boolean,
     modifier: Modifier = Modifier,
-    baseColor: Color = if (isLightsOn) GithubHeatmapColors.LightsOn else Color(0xFF64B5F6),
+    baseColor: Color = if (isLightsOn) LocalAccessibilitySuite.current.lightsOnAccent else LocalAccessibilitySuite.current.lightsOffAccent,
     trackColor: Color = MaterialTheme.colorScheme.surfaceVariant
 ) {
+    val a11y = LocalAccessibilitySuite.current
     val clampedProgress = progress.coerceIn(0f, 1f)
 
     val transition = rememberInfiniteTransition(label = "m3_wavy_progress_transition")
@@ -513,9 +529,9 @@ fun ExpressiveWavyProgressIndicator(
                 val waveBrush = if (isLightsOn) {
                     Brush.horizontalGradient(
                         colors = listOf(
-                            Color(0xFFFFB300),
+                            a11y.lightsOnGradientStart,
                             baseColor,
-                            Color(0xFF81C784)
+                            a11y.lightsOnGradientEnd
                         ),
                         startX = 0f,
                         endX = activeEnd.coerceAtLeast(1f)
@@ -523,13 +539,20 @@ fun ExpressiveWavyProgressIndicator(
                 } else {
                     Brush.horizontalGradient(
                         colors = listOf(
-                            Color(0xFF3949AB),
+                            a11y.lightsOffGradientStart,
                             baseColor,
-                            Color(0xFF80D8FF)
+                            a11y.lightsOffGradientEnd
                         ),
                         startX = 0f,
                         endX = activeEnd.coerceAtLeast(1f)
                     )
+                }
+
+                // Under OS Color Correction, differentiate Lights OFF/paused via dashed stroke geometry
+                val strokeEffect = if (a11y.useNonColorPatterns && !isLightsOn) {
+                    PathEffect.dashPathEffect(floatArrayOf(14f, 8f), 0f)
+                } else {
+                    null
                 }
 
                 drawPath(
@@ -538,7 +561,8 @@ fun ExpressiveWavyProgressIndicator(
                     style = Stroke(
                         width = strokeWidth,
                         cap = StrokeCap.Round,
-                        join = StrokeJoin.Round
+                        join = StrokeJoin.Round,
+                        pathEffect = strokeEffect
                     )
                 )
             }

@@ -58,6 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.GrowthStage
+import com.example.ui.theme.LocalAccessibilitySuite
 import java.util.Locale
 
 /**
@@ -548,12 +549,13 @@ fun AddPlantDialog(
             }
         },
         dismissButton = {
+            val a11y = LocalAccessibilitySuite.current
             Button(
                 onClick = onDismiss,
                 shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFDC2626),
-                    contentColor = Color.White
+                    containerColor = a11y.destructiveCtaBg,
+                    contentColor = a11y.destructiveCtaContent
                 ),
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
                 modifier = Modifier.testTag("btn_cancel_plant")

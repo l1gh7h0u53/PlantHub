@@ -2,11 +2,11 @@ package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,13 +41,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.GithubHeatmapColors
+import com.example.ui.theme.LocalAccessibilitySuite
 import com.example.ui.viewmodel.HeatmapViewMode
 import com.example.util.HeatmapCalculator
 import com.example.util.HeatmapDay
@@ -55,6 +62,12 @@ import com.example.util.HeatmapGridData
 
 /**
  * GitHub-inspired cultivation care contribution heatmap shared across Android, Desktop, and iOS.
+ *
+ * Automatically integrates the silent OS-synchronized [LocalAccessibilitySuite]:
+ * - Resolves vision-safe heatmap swatch ramps (Protan/Deutan Cobalt-Cyan, Tritan Teal-Rose, Monochromacy).
+ * - Renders geometric intensity markers ([HeatmapPatternGlyph]) inside active cells when Color
+ *   Correction is enabled so activity density never depends solely on color perception.
+ * - Enforces strengthened borders under OS High Contrast Text and provides TalkBack descriptions per cell.
  */
 @Composable
 fun GithubHeatmapGrid(
@@ -66,7 +79,8 @@ fun GithubHeatmapGrid(
     initiallyExpanded: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val a11y = LocalAccessibilitySuite.current
+    val isDark = a11y.isDark
     val scrollState = rememberScrollState()
 
     var isExpanded by remember { mutableStateOf(if (isCollapsible) initiallyExpanded else true) }
@@ -81,7 +95,7 @@ fun GithubHeatmapGrid(
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = BorderStroke(a11y.borderStrokeWidthDp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
             .fillMaxWidth()
             .testTag("github_heatmap_grid")
@@ -105,7 +119,8 @@ fun GithubHeatmapGrid(
                         text = title,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.semantics { heading() }
                     )
                     Text(
                         text = if (!isExpanded && isCollapsible) {
@@ -125,7 +140,10 @@ fun GithubHeatmapGrid(
                     Surface(
                         shape = RoundedCornerShape(20.dp),
                         color = MaterialTheme.colorScheme.tertiaryContainer,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary)
+                        border = BorderStroke(a11y.borderStrokeWidthDp, MaterialTheme.colorScheme.tertiary),
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "${gridData.currentStreak} day cultivation care streak"
+                        }
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -240,8 +258,9 @@ fun GithubHeatmapGrid(
                             gridData.weeks.forEach { week ->
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     week.forEach { day ->
-                                        val cellColor = getLevelColor(day.level, isDark)
+                                        val cellColor = a11y.heatmapColor(day.level)
                                         val isSelected = selectedDay?.dateKey == day.dateKey
+                                        val glyphColor = if (day.level >= 3 && !isDark) Color.White else MaterialTheme.colorScheme.onSurface
 
                                         Box(
                                             modifier = Modifier
@@ -249,15 +268,27 @@ fun GithubHeatmapGrid(
                                                 .clip(RoundedCornerShape(3.dp))
                                                 .background(cellColor)
                                                 .border(
-                                                    width = if (isSelected) 1.5.dp else 0.5.dp,
-                                                    color = if (isSelected) MaterialTheme.colorScheme.primary
-                                                    else if (isDark) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                                    else Color.Transparent,
+                                                    width = if (isSelected || a11y.state.highContrastText) 1.5.dp else 0.5.dp,
+                                                    color = when {
+                                                        isSelected -> MaterialTheme.colorScheme.primary
+                                                        a11y.state.highContrastText || a11y.useNonColorPatterns ->
+                                                            MaterialTheme.colorScheme.outline.copy(alpha = 0.75f)
+                                                        isDark -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                                        else -> Color.Transparent
+                                                    },
                                                     shape = RoundedCornerShape(3.dp)
                                                 )
                                                 .clickable { selectedDay = day }
-                                                .testTag("day_cell_${day.dateKey}")
-                                        )
+                                                .semantics {
+                                                    contentDescription = "${day.displayDate}: ${day.careLogs.size} care actions, activity level ${day.level} of 4"
+                                                }
+                                                .testTag("day_cell_${day.dateKey}"),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (a11y.useNonColorPatterns && day.level > 0) {
+                                                HeatmapPatternGlyph(level = day.level, tint = glyphColor)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -279,17 +310,23 @@ fun GithubHeatmapGrid(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         for (lvl in 0..4) {
+                            val swatchGlyphColor = if (lvl >= 3 && !isDark) Color.White else MaterialTheme.colorScheme.onSurface
                             Box(
                                 modifier = Modifier
                                     .size(12.dp)
                                     .clip(RoundedCornerShape(2.5.dp))
-                                    .background(getLevelColor(lvl, isDark))
+                                    .background(a11y.heatmapColor(lvl))
                                     .border(
-                                        0.5.dp,
-                                        if (isDark) MaterialTheme.colorScheme.outlineVariant else Color.LightGray,
+                                        if (a11y.state.highContrastText) 1.dp else 0.5.dp,
+                                        if (isDark || a11y.state.highContrastText) MaterialTheme.colorScheme.outlineVariant else Color.LightGray,
                                         RoundedCornerShape(2.5.dp)
-                                    )
-                            )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (a11y.useNonColorPatterns && lvl > 0) {
+                                    HeatmapPatternGlyph(level = lvl, tint = swatchGlyphColor)
+                                }
+                            }
                             Spacer(modifier = Modifier.width(3.dp))
                         }
                         Spacer(modifier = Modifier.width(3.dp))
@@ -324,7 +361,7 @@ fun GithubHeatmapGrid(
                                                 modifier = Modifier
                                                     .size(10.dp)
                                                     .clip(CircleShape)
-                                                    .background(getLevelColor(day.level, isDark))
+                                                    .background(a11y.heatmapColor(day.level))
                                             )
                                             Text(
                                                 text = day.displayDate,
@@ -375,22 +412,54 @@ fun GithubHeatmapGrid(
     }
 }
 
-private fun getLevelColor(level: Int, isDark: Boolean): Color {
-    return if (isDark) {
+/**
+ * Draws distinct non-color geometric micro-glyphs inside heatmap cells (levels 1..4)
+ * when OS Color Correction is enabled, guaranteeing density readability even in monochromacy.
+ */
+@Composable
+private fun HeatmapPatternGlyph(
+    level: Int,
+    tint: Color
+) {
+    Canvas(modifier = Modifier.size(10.dp)) {
+        val w = size.width
+        val h = size.height
+        val c = center
         when (level) {
-            1 -> GithubHeatmapColors.DarkLevel1
-            2 -> GithubHeatmapColors.DarkLevel2
-            3 -> GithubHeatmapColors.DarkLevel3
-            4 -> GithubHeatmapColors.DarkLevel4
-            else -> GithubHeatmapColors.DarkLevel0
-        }
-    } else {
-        when (level) {
-            1 -> GithubHeatmapColors.LightLevel1
-            2 -> GithubHeatmapColors.LightLevel2
-            3 -> GithubHeatmapColors.LightLevel3
-            4 -> GithubHeatmapColors.LightLevel4
-            else -> GithubHeatmapColors.LightLevel0
+            1 -> drawCircle(
+                color = tint.copy(alpha = 0.85f),
+                radius = w * 0.16f,
+                center = c
+            )
+            2 -> drawLine(
+                color = tint.copy(alpha = 0.9f),
+                start = Offset(w * 0.2f, c.y),
+                end = Offset(w * 0.8f, c.y),
+                strokeWidth = 1.6.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+            3 -> drawRect(
+                color = tint.copy(alpha = 0.9f),
+                topLeft = Offset(w * 0.22f, h * 0.22f),
+                size = Size(w * 0.56f, h * 0.56f),
+                style = Stroke(width = 1.4.dp.toPx())
+            )
+            else -> {
+                drawLine(
+                    color = tint,
+                    start = Offset(w * 0.22f, c.y),
+                    end = Offset(w * 0.78f, c.y),
+                    strokeWidth = 1.6.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = tint,
+                    start = Offset(c.x, h * 0.22f),
+                    end = Offset(c.x, h * 0.78f),
+                    strokeWidth = 1.6.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            }
         }
     }
 }

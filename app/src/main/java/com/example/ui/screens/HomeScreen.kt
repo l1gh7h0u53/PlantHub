@@ -28,12 +28,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Eco
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.NightsStay
+import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Spa
 import androidx.compose.material.icons.filled.WaterDrop
+import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -72,7 +80,7 @@ import com.example.ui.components.AddPlantDialog
 import com.example.ui.components.GithubHeatmapGrid
 import com.example.ui.components.PlantIconHelper
 import com.example.ui.components.QuickCareBottomSheet
-import com.example.ui.theme.GithubHeatmapColors
+import com.example.ui.theme.LocalAccessibilitySuite
 import com.example.ui.viewmodel.HeatmapViewMode
 import com.example.ui.viewmodel.PlantViewModel
 import com.example.util.LightCycleEngine
@@ -367,6 +375,7 @@ private fun SpaciousPlantCard(
     val isWaiting = lightStatus.isWaitingToStart
     val isRunning = lightStatus.isTimerRunning
     val isMaintenancePaused = lightStatus.isPausedForMaintenance || plant.isPausedForMaintenance
+    val a11y = LocalAccessibilitySuite.current
 
     var showStageDialog by remember { mutableStateOf(false) }
     var showResumeConfirm by remember { mutableStateOf(false) }
@@ -374,7 +383,7 @@ private fun SpaciousPlantCard(
     Surface(
         shape = RoundedCornerShape(28.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = androidx.compose.foundation.BorderStroke(a11y.borderStrokeWidthDp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier
             .fillMaxWidth()
             .testTag("plant_card_${plant.id}")
@@ -433,8 +442,17 @@ private fun SpaciousPlantCard(
                 // Stage Badge - Tap to open detailed Stage Selection Dialog
                 Surface(
                     shape = CircleShape,
-                    color = Color(0xFFA3F5B1), // Bright emerald filled container
+                    color = a11y.stageBadgeBg,
+                    border = if (a11y.isColorCorrectionActive || a11y.state.highContrastText) {
+                        androidx.compose.foundation.BorderStroke(
+                            a11y.borderStrokeWidthDp,
+                            a11y.stageBadgeContent.copy(alpha = 0.55f)
+                        )
+                    } else null,
                     modifier = Modifier
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = "Growth stage: ${plant.stage.label}. Tap to change stage."
+                        }
                         .clickable { showStageDialog = true }
                         .testTag("btn_stage_badge_${plant.id}")
                 ) {
@@ -447,12 +465,12 @@ private fun SpaciousPlantCard(
                             text = plant.stage.label,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF00210B) // Crisp deep forest dark text
+                            color = a11y.stageBadgeContent
                         )
                         Icon(
                             imageVector = Icons.Filled.Edit,
-                            contentDescription = "Edit stage",
-                            tint = Color(0xFF00210B), // High-contrast dark edit icon
+                            contentDescription = null,
+                            tint = a11y.stageBadgeContent,
                             modifier = Modifier.size(12.dp)
                         )
                     }
@@ -461,27 +479,52 @@ private fun SpaciousPlantCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Photoperiod Light Cycle HUD Pill
+            // Photoperiod Light Cycle HUD Pill (auto-adapts colors & adds phase icons under OS color correction)
+            val hudBg = when {
+                isMaintenancePaused -> a11y.maintenanceBadgeBg
+                isWaiting -> MaterialTheme.colorScheme.surfaceVariant
+                !isRunning -> a11y.maintenanceBadgeBg
+                lightStatus.isLightOn -> a11y.lightsOnBadgeBg
+                else -> a11y.lightsOffBadgeBg
+            }
+            val hudAccent = when {
+                isMaintenancePaused -> a11y.maintenanceAccent
+                isWaiting -> MaterialTheme.colorScheme.onSurfaceVariant
+                !isRunning -> a11y.maintenanceAccent
+                lightStatus.isLightOn -> a11y.lightsOnAccent
+                else -> a11y.lightsOffAccent
+            }
+            val hudBorderColor = when {
+                isMaintenancePaused -> a11y.maintenanceAccent
+                isWaiting -> MaterialTheme.colorScheme.outlineVariant
+                !isRunning -> a11y.maintenanceAccent.copy(alpha = if (a11y.state.highContrastText) 0.9f else 0.55f)
+                lightStatus.isLightOn -> a11y.lightsOnAccent.copy(alpha = if (a11y.state.highContrastText) 0.9f else 0.55f)
+                else -> a11y.lightsOffAccent.copy(alpha = if (a11y.state.highContrastText) 0.9f else 0.5f)
+            }
+            val phaseText = if (isMaintenancePaused) "PAUSED (MAINTENANCE)" else lightStatus.currentPhaseName
+            val timeRemainingText = if (isMaintenancePaused) {
+                "Cycle complete • maintenance ready"
+            } else if (isWaiting) {
+                "${lightStatus.hoursRemainingInPhase}h ready"
+            } else {
+                "${lightStatus.hoursRemainingInPhase}h ${lightStatus.minutesRemainingInPhase}m left"
+            }
+            val phaseIcon = when {
+                isMaintenancePaused || !isRunning -> Icons.Filled.PauseCircle
+                isWaiting -> Icons.Filled.Schedule
+                lightStatus.isLightOn -> Icons.Filled.WbSunny
+                else -> Icons.Filled.NightsStay
+            }
+
             Surface(
                 shape = RoundedCornerShape(20.dp),
-                color = when {
-                    isMaintenancePaused -> Color(0xFF332005)
-                    isWaiting -> MaterialTheme.colorScheme.surfaceVariant
-                    !isRunning -> Color(0xFF2E2214)
-                    lightStatus.isLightOn -> Color(0xFF2E2400)
-                    else -> Color(0xFF15222E)
-                },
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    when {
-                        isMaintenancePaused -> Color(0xFFFFB74D)
-                        isWaiting -> MaterialTheme.colorScheme.outlineVariant
-                        !isRunning -> Color(0xFFFFB74D).copy(alpha = 0.5f)
-                        lightStatus.isLightOn -> GithubHeatmapColors.LightsOn.copy(alpha = 0.5f)
-                        else -> Color(0xFF90CAF9).copy(alpha = 0.4f)
+                color = hudBg,
+                border = androidx.compose.foundation.BorderStroke(a11y.borderStrokeWidthDp, hudBorderColor),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "Light cycle status for ${plant.name}: $phaseText, $timeRemainingText"
                     }
-                ),
-                modifier = Modifier.fillMaxWidth()
             ) {
                 FlowRow(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -492,42 +535,31 @@ private fun SpaciousPlantCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    when {
-                                        isMaintenancePaused -> Color(0xFFFFB74D)
-                                        isWaiting -> MaterialTheme.colorScheme.onSurfaceVariant
-                                        !isRunning -> Color(0xFFFFB74D)
-                                        lightStatus.isLightOn -> GithubHeatmapColors.LightsOn
-                                        else -> Color(0xFF90CAF9)
-                                    }
-                                )
-                        )
+                        if (a11y.useNonColorPatterns) {
+                            Icon(
+                                imageVector = phaseIcon,
+                                contentDescription = null,
+                                tint = hudAccent,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(hudAccent)
+                            )
+                        }
                         Text(
-                            text = if (isMaintenancePaused) "PAUSED (MAINTENANCE)" else lightStatus.currentPhaseName,
+                            text = phaseText,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = when {
-                                isMaintenancePaused -> Color(0xFFFFB74D)
-                                isWaiting -> MaterialTheme.colorScheme.onSurfaceVariant
-                                !isRunning -> Color(0xFFFFB74D)
-                                lightStatus.isLightOn -> GithubHeatmapColors.LightsOn
-                                else -> Color(0xFF90CAF9)
-                            }
+                            color = hudAccent
                         )
                     }
 
                     Text(
-                        text = if (isMaintenancePaused) {
-                            "Cycle complete • maintenance ready"
-                        } else if (isWaiting) {
-                            "${lightStatus.hoursRemainingInPhase}h ready"
-                        } else {
-                            "${lightStatus.hoursRemainingInPhase}h ${lightStatus.minutesRemainingInPhase}m left"
-                        },
+                        text = timeRemainingText,
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSurface
@@ -540,8 +572,11 @@ private fun SpaciousPlantCard(
                 Spacer(modifier = Modifier.height(10.dp))
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFF2B1D0E),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFB74D).copy(alpha = 0.4f)),
+                    color = a11y.maintenanceBadgeBg,
+                    border = androidx.compose.foundation.BorderStroke(
+                        a11y.borderStrokeWidthDp,
+                        a11y.maintenanceAccent.copy(alpha = if (a11y.state.highContrastText) 0.9f else 0.45f)
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
@@ -552,14 +587,14 @@ private fun SpaciousPlantCard(
                             Icon(
                                 imageVector = Icons.Filled.Build,
                                 contentDescription = null,
-                                tint = Color(0xFFFFB74D),
+                                tint = a11y.maintenanceAccent,
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
                                 text = "Off-Time Complete • Maintenance Window",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFFFB74D)
+                                color = a11y.maintenanceAccent
                             )
                         }
                         Spacer(modifier = Modifier.height(4.dp))
@@ -573,8 +608,8 @@ private fun SpaciousPlantCard(
                             onClick = { showResumeConfirm = true },
                             shape = CircleShape,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFFFB74D),
-                                contentColor = Color(0xFF201505)
+                                containerColor = a11y.maintenanceCtaBg,
+                                contentColor = a11y.maintenanceCtaContent
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -725,13 +760,17 @@ private fun SpaciousPlantCard(
                         val isSelected = plant.stage == stage
                         Surface(
                             shape = CircleShape,
-                            color = if (isSelected) Color(0xFFA3F5B1) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            color = if (isSelected) a11y.stageBadgeBg else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                             border = androidx.compose.foundation.BorderStroke(
-                                if (isSelected) 1.5.dp else 0.8.dp,
-                                if (isSelected) Color(0xFF005221) else MaterialTheme.colorScheme.outlineVariant
+                                if (isSelected) 1.5.dp else a11y.borderStrokeWidthDp,
+                                if (isSelected) a11y.stageBadgeContent else MaterialTheme.colorScheme.outlineVariant
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .semantics(mergeDescendants = true) {
+                                    selected = isSelected
+                                    contentDescription = "${stage.label}, ${stage.defaultOnHours}h on / ${stage.defaultOffHours}h off"
+                                }
                                 .clickable {
                                     onStageChange(stage)
                                     showStageDialog = false
@@ -746,31 +785,40 @@ private fun SpaciousPlantCard(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = if (isSelected) Color(0xFF00210B) else MaterialTheme.colorScheme.outlineVariant,
-                                        modifier = Modifier.size(7.dp)
-                                    ) {}
+                                    if (isSelected && a11y.useNonColorPatterns) {
+                                        Icon(
+                                            imageVector = Icons.Filled.CheckCircle,
+                                            contentDescription = null,
+                                            tint = a11y.stageBadgeContent,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    } else {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (isSelected) a11y.stageBadgeContent else MaterialTheme.colorScheme.outlineVariant,
+                                            modifier = Modifier.size(7.dp)
+                                        ) {}
+                                    }
                                     Text(
                                         text = stage.label,
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) Color(0xFF00210B) else MaterialTheme.colorScheme.onSurface
+                                        color = if (isSelected) a11y.stageBadgeContent else MaterialTheme.colorScheme.onSurface
                                     )
                                 }
                                 Surface(
                                     shape = CircleShape,
-                                    color = if (isSelected) Color(0xFF00210B) else MaterialTheme.colorScheme.surfaceVariant,
+                                    color = if (isSelected) a11y.stageBadgeContent else MaterialTheme.colorScheme.surfaceVariant,
                                     border = androidx.compose.foundation.BorderStroke(
                                         0.6.dp,
-                                        if (isSelected) Color(0xFF00210B) else MaterialTheme.colorScheme.outlineVariant
+                                        if (isSelected) a11y.stageBadgeContent else MaterialTheme.colorScheme.outlineVariant
                                     )
                                 ) {
                                     Text(
                                         text = "${stage.defaultOnHours}h / ${stage.defaultOffHours}h",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) Color(0xFFA3F5B1) else MaterialTheme.colorScheme.onSurface,
+                                        color = if (isSelected) a11y.stageBadgeBg else MaterialTheme.colorScheme.onSurface,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                     )
                                 }

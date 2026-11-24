@@ -59,6 +59,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -69,6 +72,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.R
 import com.example.data.model.PhotoEntry
+import com.example.ui.theme.LocalAccessibilitySuite
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -144,12 +148,16 @@ fun VaultElapsedDaysAnalyticsCard(
 
     val maxElapsed = points.maxOfOrNull { it.elapsedDays } ?: 0f
     val milestoneCount = points.count { it.isMilestone }
+    val a11y = LocalAccessibilitySuite.current
 
     Surface(
         shape = RoundedCornerShape(22.dp),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 2.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        border = BorderStroke(
+            a11y.borderStrokeWidthDp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (a11y.state.highContrastText) 0.9f else 0.5f)
+        ),
         modifier = modifier
             .fillMaxWidth()
             .testTag("analytics_expandable_card")
@@ -163,6 +171,9 @@ fun VaultElapsedDaysAnalyticsCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .semantics(mergeDescendants = true) {
+                        stateDescription = if (isExpanded) "Expanded" else "Collapsed"
+                    }
                     .clickable { onExpandedChange(!isExpanded) }
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -428,10 +439,16 @@ private fun AnalyticsStatPill(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     modifier: Modifier = Modifier
 ) {
+    val a11y = LocalAccessibilitySuite.current
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        modifier = modifier
+        border = if (a11y.state.highContrastText || a11y.isColorCorrectionActive) {
+            BorderStroke(a11y.borderStrokeWidthDp, MaterialTheme.colorScheme.outlineVariant)
+        } else null,
+        modifier = modifier.semantics(mergeDescendants = true) {
+            contentDescription = "$label: $value"
+        }
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
@@ -470,6 +487,10 @@ private fun AnalyticsStatPill(
 
 /**
  * High-performance interactive Compose Canvas rendering the elapsed days curve.
+ *
+ * Automatically adopts [LocalAccessibilitySuite] calibrated curve/node colors and draws distinct
+ * diamond geometry for weekly milestones when OS color-correction is active so checkpoints
+ * stay separable without relying on hue.
  */
 @Composable
 private fun InteractiveElapsedDaysChart(
@@ -478,10 +499,11 @@ private fun InteractiveElapsedDaysChart(
     onSelectPoint: (TimelineChartPoint) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val a11y = LocalAccessibilitySuite.current
     val textMeasurer = rememberTextMeasurer()
-    val primaryColor = MaterialTheme.colorScheme.primary
-    val secondaryColor = MaterialTheme.colorScheme.secondary
-    val tertiaryColor = MaterialTheme.colorScheme.tertiary
+    val curveColor = a11y.chartCurveColor
+    val milestoneNodeColor = a11y.chartMilestoneNodeColor
+    val standardNodeColor = a11y.chartStandardNodeColor
     val surfaceColor = MaterialTheme.colorScheme.surface
     val outlineColor = MaterialTheme.colorScheme.outlineVariant
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
@@ -499,9 +521,14 @@ private fun InteractiveElapsedDaysChart(
         max(1f, ceil(calculated / 5f) * 5f)
     }
 
+    val milestoneTotal = remember(points) { points.count { it.isMilestone } }
+
     // Canvas drawing with touch listener
     Canvas(
         modifier = modifier
+            .semantics {
+                contentDescription = "Elapsed days timeline chart with ${points.size} checkpoints spanning ${maxDays.toInt()} days and $milestoneTotal weekly milestones."
+            }
             .pointerInput(points, maxDays) {
                 detectTapGestures { tapOffset ->
                     val paddingLeft = 32.dp.toPx()
@@ -615,9 +642,9 @@ private fun InteractiveElapsedDaysChart(
             path = fillPath,
             brush = Brush.verticalGradient(
                 colors = listOf(
-                    primaryColor.copy(alpha = 0.28f),
-                    primaryColor.copy(alpha = 0.08f),
-                    primaryColor.copy(alpha = 0.0f)
+                    curveColor.copy(alpha = 0.28f),
+                    curveColor.copy(alpha = 0.08f),
+                    curveColor.copy(alpha = 0.0f)
                 ),
                 startY = paddingTop,
                 endY = chartHeight + paddingTop
@@ -627,7 +654,7 @@ private fun InteractiveElapsedDaysChart(
         // 4. Draw curve outline stroke
         drawPath(
             path = curvePath,
-            color = primaryColor,
+            color = curveColor,
             style = Stroke(
                 width = 3.dp.toPx(),
                 cap = StrokeCap.Round,
@@ -635,7 +662,7 @@ private fun InteractiveElapsedDaysChart(
             )
         )
 
-        // 5. Draw node circles and selection indicators
+        // 5. Draw node markers (diamond geometry for milestones when non-color patterns are active)
         pointCoords.forEachIndexed { index, coord ->
             val pt = points[index]
             val isSelected = selectedPoint?.photo?.id == pt.photo.id
@@ -643,7 +670,7 @@ private fun InteractiveElapsedDaysChart(
             // If selected: draw vertical crosshair guide
             if (isSelected) {
                 drawLine(
-                    color = primaryColor.copy(alpha = 0.5f),
+                    color = curveColor.copy(alpha = 0.55f),
                     start = Offset(coord.x, paddingTop),
                     end = Offset(coord.x, chartHeight + paddingTop),
                     strokeWidth = 1.2.dp.toPx(),
@@ -651,41 +678,78 @@ private fun InteractiveElapsedDaysChart(
                 )
             }
 
-            // Draw outer node indicator
             if (isSelected) {
-                // Outer glowing pulse ring
                 drawCircle(
-                    color = primaryColor.copy(alpha = 0.22f),
+                    color = curveColor.copy(alpha = 0.22f),
                     radius = 12.dp.toPx(),
                     center = coord
                 )
-                drawCircle(
-                    color = primaryColor,
-                    radius = 7.dp.toPx(),
-                    center = coord
-                )
-                drawCircle(
-                    color = surfaceColor,
-                    radius = 3.5.dp.toPx(),
-                    center = coord
-                )
+                if (pt.isMilestone && a11y.useNonColorPatterns) {
+                    val rOuter = 8.dp.toPx()
+                    val diamondOuter = Path().apply {
+                        moveTo(coord.x, coord.y - rOuter)
+                        lineTo(coord.x + rOuter, coord.y)
+                        lineTo(coord.x, coord.y + rOuter)
+                        lineTo(coord.x - rOuter, coord.y)
+                        close()
+                    }
+                    drawPath(path = diamondOuter, color = milestoneNodeColor)
+                    drawCircle(color = surfaceColor, radius = 3.dp.toPx(), center = coord)
+                } else {
+                    drawCircle(
+                        color = curveColor,
+                        radius = 7.dp.toPx(),
+                        center = coord
+                    )
+                    drawCircle(
+                        color = surfaceColor,
+                        radius = 3.5.dp.toPx(),
+                        center = coord
+                    )
+                }
             } else if (pt.isMilestone) {
-                // Milestone checkpoint node
-                drawCircle(
-                    color = tertiaryColor.copy(alpha = 0.3f),
-                    radius = 8.dp.toPx(),
-                    center = coord
-                )
-                drawCircle(
-                    color = surfaceColor,
-                    radius = 5.5.dp.toPx(),
-                    center = coord
-                )
-                drawCircle(
-                    color = primaryColor,
-                    radius = 4.dp.toPx(),
-                    center = coord
-                )
+                if (a11y.useNonColorPatterns) {
+                    // Distinct diamond silhouette differentiates milestones without relying on color alone
+                    val rHalo = 8.dp.toPx()
+                    val rCore = 5.5.dp.toPx()
+                    val diamondHalo = Path().apply {
+                        moveTo(coord.x, coord.y - rHalo)
+                        lineTo(coord.x + rHalo, coord.y)
+                        lineTo(coord.x, coord.y + rHalo)
+                        lineTo(coord.x - rHalo, coord.y)
+                        close()
+                    }
+                    val diamondCore = Path().apply {
+                        moveTo(coord.x, coord.y - rCore)
+                        lineTo(coord.x + rCore, coord.y)
+                        lineTo(coord.x, coord.y + rCore)
+                        lineTo(coord.x - rCore, coord.y)
+                        close()
+                    }
+                    drawPath(path = diamondHalo, color = milestoneNodeColor.copy(alpha = 0.35f))
+                    drawPath(path = diamondCore, color = milestoneNodeColor)
+                    drawPath(
+                        path = diamondCore,
+                        color = surfaceColor,
+                        style = Stroke(width = 1.4.dp.toPx())
+                    )
+                } else {
+                    drawCircle(
+                        color = milestoneNodeColor.copy(alpha = 0.3f),
+                        radius = 8.dp.toPx(),
+                        center = coord
+                    )
+                    drawCircle(
+                        color = surfaceColor,
+                        radius = 5.5.dp.toPx(),
+                        center = coord
+                    )
+                    drawCircle(
+                        color = curveColor,
+                        radius = 4.dp.toPx(),
+                        center = coord
+                    )
+                }
             } else {
                 // Regular daily photo node
                 drawCircle(
@@ -694,7 +758,7 @@ private fun InteractiveElapsedDaysChart(
                     center = coord
                 )
                 drawCircle(
-                    color = secondaryColor.copy(alpha = 0.85f),
+                    color = standardNodeColor.copy(alpha = if (a11y.isColorCorrectionActive) 1f else 0.85f),
                     radius = 3.dp.toPx(),
                     center = coord
                 )
@@ -706,7 +770,7 @@ private fun InteractiveElapsedDaysChart(
                 text = xLabel,
                 style = labelTextStyle.copy(
                     fontWeight = if (isSelected || pt.isMilestone) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isSelected) primaryColor else onSurfaceVariant
+                    color = if (isSelected) curveColor else onSurfaceVariant
                 )
             )
             drawText(

@@ -34,11 +34,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Plant
-import com.example.ui.theme.GithubHeatmapColors
+import com.example.ui.theme.LocalAccessibilitySuite
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,6 +53,7 @@ fun QuickCareBottomSheet(
     onOpenCustomDialog: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val a11y = LocalAccessibilitySuite.current
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -105,8 +108,8 @@ fun QuickCareBottomSheet(
                 ) {
                     CareTile(
                         icon = Icons.Filled.WaterDrop,
-                        iconTint = GithubHeatmapColors.WaterBlue,
-                        iconBg = Color(0xFF0D2538),
+                        iconTint = a11y.waterAccent,
+                        iconBg = a11y.waterBg,
                         title = "Water +250mL",
                         subtitle = "Light soil moisture",
                         onClick = {
@@ -118,8 +121,8 @@ fun QuickCareBottomSheet(
 
                     CareTile(
                         icon = Icons.Filled.WaterDrop,
-                        iconTint = GithubHeatmapColors.WaterBlue,
-                        iconBg = Color(0xFF0D2538),
+                        iconTint = a11y.waterAccent,
+                        iconBg = a11y.waterBg,
                         title = "Water +500mL",
                         subtitle = "Full root drench",
                         onClick = {
@@ -137,8 +140,8 @@ fun QuickCareBottomSheet(
                 ) {
                     CareTile(
                         icon = Icons.Filled.Waves,
-                        iconTint = GithubHeatmapColors.MistTeal,
-                        iconBg = Color(0xFF0D2E2B),
+                        iconTint = a11y.mistAccent,
+                        iconBg = a11y.mistBg,
                         title = "Foliar Mist",
                         subtitle = "Canopy spraying",
                         onClick = {
@@ -150,8 +153,8 @@ fun QuickCareBottomSheet(
 
                     CareTile(
                         icon = Icons.Filled.Science,
-                        iconTint = GithubHeatmapColors.NutrientPurple,
-                        iconBg = Color(0xFF26122E),
+                        iconTint = a11y.fertilizeAccent,
+                        iconBg = a11y.fertilizeBg,
                         title = "Feed NPK",
                         subtitle = "Standard nutrients",
                         onClick = {
@@ -227,12 +230,16 @@ private fun CareTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val a11y = LocalAccessibilitySuite.current
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = androidx.compose.foundation.BorderStroke(a11y.borderStrokeWidthDp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
             .clip(RoundedCornerShape(24.dp))
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$title. $subtitle"
+            }
             .clickable(onClick = onClick)
     ) {
         Column(
@@ -242,6 +249,9 @@ private fun CareTile(
             Surface(
                 shape = CircleShape,
                 color = iconBg,
+                border = if (a11y.useNonColorPatterns || a11y.state.highContrastText) {
+                    androidx.compose.foundation.BorderStroke(a11y.borderStrokeWidthDp, iconTint.copy(alpha = 0.7f))
+                } else null,
                 modifier = Modifier.size(32.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {

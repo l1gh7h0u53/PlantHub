@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -25,13 +26,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.GithubHeatmapColors
+import com.example.ui.theme.LocalAccessibilitySuite
 
 /**
  * Horizontal quick care action ribbon shared across Android, Desktop, and iOS.
+ *
+ * Adapts action icon tints and border contrast dynamically via [LocalAccessibilitySuite] and
+ * provides descriptive TalkBack labels for each one-tap care action.
  */
 @Composable
 fun QuickCareBar(
@@ -41,7 +47,13 @@ fun QuickCareBar(
     onOpenCustomDialog: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val a11y = LocalAccessibilitySuite.current
     val scrollState = rememberScrollState()
+    val chipBorder = if (a11y.state.highContrastText || a11y.isColorCorrectionActive) {
+        BorderStroke(a11y.borderStrokeWidthDp, MaterialTheme.colorScheme.outline)
+    } else {
+        BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant)
+    }
 
     Row(
         modifier = modifier
@@ -59,7 +71,8 @@ fun QuickCareBar(
                 contentColor = MaterialTheme.colorScheme.onPrimary
             ),
             modifier = Modifier
-                .heightIn(min = 44.dp)
+                .heightIn(min = 48.dp)
+                .semantics { contentDescription = "Log custom cultivation care action" }
                 .testTag("action_custom_log")
         ) {
             Icon(
@@ -82,16 +95,18 @@ fun QuickCareBar(
                 Icon(
                     imageVector = Icons.Filled.WaterDrop,
                     contentDescription = null,
-                    tint = GithubHeatmapColors.WaterBlue,
+                    tint = a11y.waterAccent,
                     modifier = Modifier.size(16.dp)
                 )
             },
             shape = CircleShape,
+            border = chipBorder,
             colors = AssistChipDefaults.assistChipColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant
             ),
             modifier = Modifier
-                .heightIn(min = 44.dp)
+                .heightIn(min = 48.dp)
+                .semantics { contentDescription = "Quick log 250 milliliters water" }
                 .testTag("quick_water_250")
         )
 
@@ -102,16 +117,18 @@ fun QuickCareBar(
                 Icon(
                     imageVector = Icons.Filled.WaterDrop,
                     contentDescription = null,
-                    tint = GithubHeatmapColors.WaterBlue,
+                    tint = a11y.waterAccent,
                     modifier = Modifier.size(16.dp)
                 )
             },
             shape = CircleShape,
+            border = chipBorder,
             colors = AssistChipDefaults.assistChipColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant
             ),
             modifier = Modifier
-                .heightIn(min = 44.dp)
+                .heightIn(min = 48.dp)
+                .semantics { contentDescription = "Quick log 500 milliliters water" }
                 .testTag("quick_water_500")
         )
 
@@ -122,16 +139,18 @@ fun QuickCareBar(
                 Icon(
                     imageVector = Icons.Filled.Waves,
                     contentDescription = null,
-                    tint = GithubHeatmapColors.MistTeal,
+                    tint = a11y.mistAccent,
                     modifier = Modifier.size(16.dp)
                 )
             },
             shape = CircleShape,
+            border = chipBorder,
             colors = AssistChipDefaults.assistChipColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant
             ),
             modifier = Modifier
-                .heightIn(min = 44.dp)
+                .heightIn(min = 48.dp)
+                .semantics { contentDescription = "Quick log foliar mist" }
                 .testTag("quick_mist")
         )
 
@@ -142,16 +161,18 @@ fun QuickCareBar(
                 Icon(
                     imageVector = Icons.Filled.Science,
                     contentDescription = null,
-                    tint = GithubHeatmapColors.NutrientPurple,
+                    tint = a11y.fertilizeAccent,
                     modifier = Modifier.size(16.dp)
                 )
             },
             shape = CircleShape,
+            border = chipBorder,
             colors = AssistChipDefaults.assistChipColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant
             ),
             modifier = Modifier
-                .heightIn(min = 44.dp)
+                .heightIn(min = 48.dp)
+                .semantics { contentDescription = "Quick log nutrient feed" }
                 .testTag("quick_feed")
         )
     }

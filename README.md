@@ -68,6 +68,7 @@ PlantHub is a vibe coded zero-trust, local-first Android application designed fo
 * **First-Launch Onboarding Carousel:** Interactive multi-step guided tour explaining photoperiods, ledgers, vaults, and data portability in simple and technical language (replayable from Settings).
 * **Clean Garden Zero-State:** Fresh installs start with an uncluttered garden and an immediate *"Add First Plant"* action.
 * **High-Contrast Dark Mode & Dynamic Color (Monet):** High-contrast typography and solid container pills across the Floating Bottom Menu Bar, Photo Vault cards, and lifecycle dialogs.
+* *Side note:* We also include an automatic accessibility and colorblindness suite that syncs directly with your device's system accessibility settings (color correction, high-contrast text, and TalkBack labels)—treated as quiet baseline engineering rather than a headline feature used to promote the app.
 
 ---
 

@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 
 val PlantDarkColorScheme = darkColorScheme(
@@ -61,18 +62,44 @@ val PlantLightColorScheme = lightColorScheme(
 @Composable
 expect fun platformDynamicColorScheme(darkTheme: Boolean): ColorScheme?
 
+/**
+ * Root Material 3 Expressive theme for PlantHub across Android, Desktop, and iOS.
+ *
+ * Automatically integrates the OS-synchronized [AccessibilitySuiteTokens] layer via
+ * [rememberSystemAccessibilityState]:
+ * - When system Color Correction is OFF, uses sanitized Monet dynamic theming (if enabled)
+ *   or PlantHub's baseline emerald/amber high-contrast schemes.
+ * - When system Color Correction is ON (Protan, Deutan, Tritan, Monochromacy), automatically
+ *   bypasses dynamic wallpaper tints to guarantee non-collapsing semantic separation, and injects
+ *   vision-calibrated tokens into [LocalAccessibilitySuite].
+ * - When OS High Contrast Text is ON, tightens foreground ink and border contrast across all roles.
+ */
 @Composable
 fun PlantHubTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
+    accessibilityOverride: SystemAccessibilityState? = null,
     content: @Composable () -> Unit
 ) {
-    val dynamicScheme = if (dynamicColor) platformDynamicColorScheme(darkTheme) else null
-    val colorScheme = dynamicScheme ?: if (darkTheme) PlantDarkColorScheme else PlantLightColorScheme
-
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
+    val systemA11y = accessibilityOverride ?: rememberSystemAccessibilityState()
+    val useMonet = dynamicColor && systemA11y.colorVisionMode == ColorVisionMode.NONE
+    val dynamicScheme = if (useMonet) platformDynamicColorScheme(darkTheme) else null
+    val baseScheme = dynamicScheme ?: if (darkTheme) PlantDarkColorScheme else PlantLightColorScheme
+    val accessibleScheme = buildAccessibleColorScheme(
+        state = systemA11y,
+        darkTheme = darkTheme,
+        baseScheme = baseScheme
     )
+    val suiteTokens = resolveAccessibilityTokens(
+        state = systemA11y,
+        darkTheme = darkTheme
+    )
+
+    CompositionLocalProvider(LocalAccessibilitySuite provides suiteTokens) {
+        MaterialTheme(
+            colorScheme = accessibleScheme,
+            typography = Typography,
+            content = content
+        )
+    }
 }

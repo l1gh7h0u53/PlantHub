@@ -92,6 +92,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -105,6 +108,7 @@ import coil.request.ImageRequest
 import com.example.data.model.GrowthStage
 import com.example.data.model.PhotoEntry
 import com.example.data.model.Plant
+import com.example.ui.theme.LocalAccessibilitySuite
 import com.example.ui.viewmodel.PlantViewModel
 import java.io.File
 import java.io.FileOutputStream
@@ -120,6 +124,7 @@ fun PhotoVaultScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val a11y = LocalAccessibilitySuite.current
     val photos by viewModel.selectedPlantPhotos.collectAsStateWithLifecycle()
     val isAnalyticsExpanded by viewModel.vaultAnalyticsExpanded.collectAsStateWithLifecycle()
     var showCaptureModal by remember { mutableStateOf(false) }
@@ -433,34 +438,51 @@ fun PhotoVaultScreen(
                         modifier = Modifier
                             .weight(1f)
                             .padding(end = 8.dp)
+                            .semantics { heading() }
                     )
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = if (isInitialWeek) MaterialTheme.colorScheme.secondaryContainer else Color(0xFFF6BE48)
+                        color = if (isInitialWeek) MaterialTheme.colorScheme.secondaryContainer else a11y.milestoneBadgeBg,
+                        border = if (a11y.isColorCorrectionActive || a11y.state.highContrastText) {
+                            androidx.compose.foundation.BorderStroke(
+                                a11y.borderStrokeWidthDp,
+                                if (isInitialWeek) MaterialTheme.colorScheme.outline else a11y.milestoneBorderColor
+                            )
+                        } else null
                     ) {
                         Text(
                             text = if (isInitialWeek) "Week 1 Open" else "7-Day Lock",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = if (isInitialWeek) MaterialTheme.colorScheme.onSecondaryContainer else Color(0xFF261900),
+                            color = if (isInitialWeek) MaterialTheme.colorScheme.onSecondaryContainer else a11y.milestoneBadgeContent,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                         )
                     }
                 }
 
                 // Status Banner explaining the 7-day milestone lock
+                val bannerTitle = if (isInitialWeek) "Week 1 Initial Mode" else "Weekly Milestone Lock Active"
+                val bannerBody = if (isInitialWeek) {
+                    "Showing all photos taken in first 7 days. Once Day 7 arrives, intermediate days lock to keep focus on weekly comparisons."
+                } else {
+                    "Showing strictly 7-day interval milestones (Day 1, 7, 14, 21...). $lockedIntermediateCount intermediate daily snapshots are locked to compare weeks without distraction."
+                }
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = if (isInitialWeek) {
                         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
                     } else {
-                        Color(0xFFF6BE48) // Solid, radiant bright amber container
+                        a11y.milestoneBadgeBg
                     },
                     border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        if (isInitialWeek) MaterialTheme.colorScheme.outlineVariant else Color(0xFFD4971A)
+                        a11y.borderStrokeWidthDp,
+                        if (isInitialWeek) MaterialTheme.colorScheme.outlineVariant else a11y.milestoneBorderColor
                     ),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = "$bannerTitle. $bannerBody"
+                        }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -469,34 +491,30 @@ fun PhotoVaultScreen(
                     ) {
                         Surface(
                             shape = CircleShape,
-                            color = if (isInitialWeek) MaterialTheme.colorScheme.primaryContainer else Color(0xFF261900),
+                            color = if (isInitialWeek) MaterialTheme.colorScheme.primaryContainer else a11y.milestoneBadgeContent,
                             modifier = Modifier.size(32.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = if (isInitialWeek) Icons.Filled.LockOpen else Icons.Filled.Lock,
                                     contentDescription = null,
-                                    tint = if (isInitialWeek) MaterialTheme.colorScheme.onPrimaryContainer else Color(0xFFF6BE48),
+                                    tint = if (isInitialWeek) MaterialTheme.colorScheme.onPrimaryContainer else a11y.milestoneBadgeBg,
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = if (isInitialWeek) "Week 1 Initial Mode" else "Weekly Milestone Lock Active",
+                                text = bannerTitle,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isInitialWeek) MaterialTheme.colorScheme.onSurface else Color(0xFF261900)
+                                color = if (isInitialWeek) MaterialTheme.colorScheme.onSurface else a11y.milestoneBadgeContent
                             )
                             Text(
-                                text = if (isInitialWeek) {
-                                    "Showing all photos taken in first 7 days. Once Day 7 arrives, intermediate days lock to keep focus on weekly comparisons."
-                                } else {
-                                    "Showing strictly 7-day interval milestones (Day 1, 7, 14, 21...). $lockedIntermediateCount intermediate daily snapshots are locked to compare weeks without distraction."
-                                },
+                                text = bannerBody,
                                 style = MaterialTheme.typography.bodySmall,
                                 fontSize = 11.sp,
-                                color = if (isInitialWeek) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f) else Color(0xFF261900).copy(alpha = 0.9f)
+                                color = if (isInitialWeek) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f) else a11y.milestoneBadgeContent.copy(alpha = 0.92f)
                             )
                         }
                     }
@@ -1208,11 +1226,12 @@ private fun ExpressiveMilestoneCard(
 ) {
     val dateFormat = remember { SimpleDateFormat("MMM d, yyyy", Locale.US) }
     val dateString = remember(entry.timestamp) { dateFormat.format(Date(entry.timestamp)) }
+    val a11y = LocalAccessibilitySuite.current
 
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = androidx.compose.foundation.BorderStroke(a11y.borderStrokeWidthDp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
@@ -1222,55 +1241,68 @@ private fun ExpressiveMilestoneCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
+                val milestoneTag = remember(entry.dayNumber) {
+                    when {
+                        entry.dayNumber == 1 -> "Baseline"
+                        entry.dayNumber % 7 == 0 -> "Week ${entry.dayNumber / 7}"
+                        else -> "Milestone"
+                    }
+                }
                 FlowRow(
-                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp)
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = "Day ${entry.dayNumber}, ${entry.stage.label}, $milestoneTag, ${entry.title}, captured $dateString"
+                        },
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFFA3F5B1) // Bright emerald pill
+                        color = a11y.dayBadgeBg,
+                        border = if (a11y.isColorCorrectionActive || a11y.state.highContrastText) {
+                            androidx.compose.foundation.BorderStroke(a11y.borderStrokeWidthDp, a11y.dayBadgeContent.copy(alpha = 0.55f))
+                        } else null
                     ) {
                         Text(
                             text = "DAY ${entry.dayNumber}",
                             style = MaterialTheme.typography.labelSmall,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF00210B), // Deep forest text
+                            color = a11y.dayBadgeContent,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                         )
                     }
 
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFFCEECCF) // Bright sage fill
+                        color = a11y.stageBadgeBg,
+                        border = if (a11y.isColorCorrectionActive || a11y.state.highContrastText) {
+                            androidx.compose.foundation.BorderStroke(a11y.borderStrokeWidthDp, a11y.stageBadgeContent.copy(alpha = 0.55f))
+                        } else null
                     ) {
                         Text(
                             text = entry.stage.label,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF00210B), // Deep forest text
+                            color = a11y.stageBadgeContent,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
 
-                    val milestoneTag = remember(entry.dayNumber) {
-                        when {
-                            entry.dayNumber == 1 -> "Baseline"
-                            entry.dayNumber % 7 == 0 -> "Week ${entry.dayNumber / 7}"
-                            else -> "Milestone"
-                        }
-                    }
-
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFFF6BE48) // Radiant amber fill
+                        color = a11y.milestoneBadgeBg,
+                        border = if (a11y.isColorCorrectionActive || a11y.state.highContrastText) {
+                            androidx.compose.foundation.BorderStroke(a11y.borderStrokeWidthDp, a11y.milestoneBorderColor)
+                        } else null
                     ) {
                         Text(
                             text = milestoneTag,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF261900), // Sharp dark typography
+                            color = a11y.milestoneBadgeContent,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }

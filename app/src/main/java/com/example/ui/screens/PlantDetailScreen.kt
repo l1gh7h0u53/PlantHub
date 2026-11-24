@@ -25,10 +25,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Eco
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Science
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.AlertDialog
@@ -53,8 +53,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -64,13 +65,14 @@ import com.example.data.model.CareActionType
 import com.example.data.model.CareLog
 import com.example.data.model.Plant
 import com.example.ui.components.AddCareLogDialog
+import com.example.ui.components.EmergencyEditWarningDialog
+import com.example.ui.components.EmergencyPlantEditDialog
 import com.example.ui.components.GithubHeatmapGrid
 import com.example.ui.components.LightCycleGauge
 import com.example.ui.components.QuickCareBar
 import com.example.ui.components.QuickCareBottomSheet
-import com.example.ui.theme.GithubHeatmapColors
+import com.example.ui.theme.LocalAccessibilitySuite
 import com.example.ui.viewmodel.PlantViewModel
-import com.example.util.GrowExportUtil
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -82,16 +84,16 @@ fun PlantDetailScreen(
     selectedPlant: Plant?,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val lightStatus by viewModel.currentLightStatus.collectAsStateWithLifecycle()
     val plantLogs by viewModel.selectedPlantLogs.collectAsStateWithLifecycle()
-    val plantPhotos by viewModel.selectedPlantPhotos.collectAsStateWithLifecycle()
     val heatmapData by viewModel.selectedPlantHeatmapData.collectAsStateWithLifecycle()
     val viewMode by viewModel.heatmapViewMode.collectAsStateWithLifecycle()
 
     var showCustomLogDialog by remember { mutableStateOf(false) }
     var showCareSheet by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showEmergencyWarningDialog by remember { mutableStateOf(false) }
+    var showEmergencyEditDialog by remember { mutableStateOf(false) }
     val showOnlyToday by viewModel.timelineShowOnlyToday.collectAsStateWithLifecycle()
 
     val startOfToday = remember {
@@ -229,28 +231,26 @@ fun PlantDetailScreen(
                             }
                         }
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            // Export .txt Grow Report Button
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.size(38.dp)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Emergency Plant Edit Button (opens two-step confirmation conversation menu)
+                            IconButton(
+                                onClick = { showEmergencyWarningDialog = true },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .testTag("btn_edit_plant")
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    IconButton(
-                                        onClick = {
-                                            val report = GrowExportUtil.generateGrowReport(
-                                                plant = selectedPlant,
-                                                careLogs = plantLogs,
-                                                photos = plantPhotos
-                                            )
-                                            GrowExportUtil.shareReport(context, report, selectedPlant.name)
-                                        },
-                                        modifier = Modifier.testTag("btn_export_report")
-                                    ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
                                         Icon(
-                                            imageVector = Icons.Filled.Share,
-                                            contentDescription = "Export grow report",
+                                            imageVector = Icons.Filled.Edit,
+                                            contentDescription = "Edit plant",
                                             tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                             modifier = Modifier.size(18.dp)
                                         )
@@ -259,16 +259,18 @@ fun PlantDetailScreen(
                             }
 
                             // Delete Plant
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
-                                modifier = Modifier.size(38.dp)
+                            IconButton(
+                                onClick = { showDeleteConfirm = true },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .testTag("btn_delete_plant")
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    IconButton(
-                                        onClick = { showDeleteConfirm = true },
-                                        modifier = Modifier.testTag("btn_delete_plant")
-                                    ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
                                         Icon(
                                             imageVector = Icons.Filled.Delete,
                                             contentDescription = "Delete plant",
@@ -489,6 +491,34 @@ fun PlantDetailScreen(
             }
         )
     }
+
+    if (showEmergencyWarningDialog) {
+        EmergencyEditWarningDialog(
+            plantName = selectedPlant.name,
+            onDismiss = { showEmergencyWarningDialog = false },
+            onConfirm = {
+                showEmergencyWarningDialog = false
+                showEmergencyEditDialog = true
+            }
+        )
+    }
+
+    if (showEmergencyEditDialog) {
+        EmergencyPlantEditDialog(
+            plant = selectedPlant,
+            currentDayAmount = daysInGrow.toInt(),
+            onDismiss = { showEmergencyEditDialog = false },
+            onSave = { newName, newStrain, newDayAmount ->
+                viewModel.updatePlantEmergencyInfo(
+                    plantId = selectedPlant.id,
+                    name = newName,
+                    strain = newStrain,
+                    dayAmount = newDayAmount
+                )
+                showEmergencyEditDialog = false
+            }
+        )
+    }
 }
 
 @Composable
@@ -523,32 +553,33 @@ private fun SpecPill(label: String, value: String) {
 private fun ExpressiveCareTimelineItem(log: CareLog) {
     val dateFormat = remember { SimpleDateFormat("MMM d, h:mm a", Locale.US) }
     val formattedDate = remember(log.timestamp) { dateFormat.format(Date(log.timestamp)) }
+    val a11y = LocalAccessibilitySuite.current
 
     val (icon, iconTint, iconBg) = when (log.actionType) {
         CareActionType.WATER -> Triple(
             Icons.Filled.WaterDrop,
-            GithubHeatmapColors.WaterBlue,
-            Color(0xFF0D2538)
+            a11y.waterAccent,
+            a11y.waterBg
         )
         CareActionType.MIST -> Triple(
             Icons.Filled.Waves,
-            GithubHeatmapColors.MistTeal,
-            Color(0xFF0D2E2B)
+            a11y.mistAccent,
+            a11y.mistBg
         )
         CareActionType.FERTILIZE -> Triple(
             Icons.Filled.Science,
-            GithubHeatmapColors.NutrientPurple,
-            Color(0xFF26122E)
+            a11y.fertilizeAccent,
+            a11y.fertilizeBg
         )
         CareActionType.DEFOLIATE -> Triple(
             Icons.Filled.ContentCut,
-            Color(0xFFFFB74D),
-            Color(0xFF332014)
+            a11y.defoliateAccent,
+            a11y.defoliateBg
         )
         CareActionType.TRAIN -> Triple(
             Icons.Filled.FitnessCenter,
-            Color(0xFF81C784),
-            Color(0xFF142B1A)
+            a11y.trainAccent,
+            a11y.trainBg
         )
         CareActionType.NOTE -> Triple(
             Icons.Filled.EditNote,
@@ -557,11 +588,26 @@ private fun ExpressiveCareTimelineItem(log: CareLog) {
         )
     }
 
+    val detailText = buildString {
+        if (log.waterAmountMl != null) append("${log.waterAmountMl} mL  ")
+        if (log.phLevel != null) append("pH: ${log.phLevel}  ")
+        if (log.fertilizerName != null) append("${log.fertilizerName} (${log.fertilizerDose ?: "Standard"})  ")
+        if (log.ecPpm != null) append("EC: ${log.ecPpm}ppm  ")
+        if (log.notes.isNotBlank()) append(log.notes)
+    }
+
     Surface(
         shape = RoundedCornerShape(28.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = Modifier.fillMaxWidth()
+        border = androidx.compose.foundation.BorderStroke(a11y.borderStrokeWidthDp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription = buildString {
+                    append("${log.actionType.displayName} logged on $formattedDate")
+                    if (detailText.isNotBlank()) append(". $detailText")
+                }
+            }
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -571,6 +617,12 @@ private fun ExpressiveCareTimelineItem(log: CareLog) {
             Surface(
                 shape = CircleShape,
                 color = iconBg,
+                border = if (a11y.useNonColorPatterns || a11y.state.highContrastText) {
+                    androidx.compose.foundation.BorderStroke(
+                        a11y.borderStrokeWidthDp,
+                        iconTint.copy(alpha = 0.7f)
+                    )
+                } else null,
                 modifier = Modifier.size(40.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -603,15 +655,6 @@ private fun ExpressiveCareTimelineItem(log: CareLog) {
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-
-                // Details (Water mL, pH, fertilizer dosage, note)
-                val detailText = buildString {
-                    if (log.waterAmountMl != null) append("${log.waterAmountMl} mL  ")
-                    if (log.phLevel != null) append("pH: ${log.phLevel}  ")
-                    if (log.fertilizerName != null) append("${log.fertilizerName} (${log.fertilizerDose ?: "Standard"})  ")
-                    if (log.ecPpm != null) append("EC: ${log.ecPpm}ppm  ")
-                    if (log.notes.isNotBlank()) append(log.notes)
                 }
 
                 if (detailText.isNotBlank()) {

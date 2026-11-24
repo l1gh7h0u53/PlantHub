@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -43,13 +44,22 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.LocalAccessibilitySuite
 import com.example.ui.viewmodel.NavTab
 
 /**
  * High-contrast floating bottom navigation bar shared across Android, Desktop, and iOS.
+ *
+ * Automatically strengthens container borders when OS High Contrast Text or Color Correction
+ * is active, and emits full [Role.Tab] selection semantics for TalkBack screen readers.
  */
 @Composable
 fun FloatingBottomBar(
@@ -57,6 +67,8 @@ fun FloatingBottomBar(
     onTabSelected: (NavTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val a11y = LocalAccessibilitySuite.current
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -70,8 +82,8 @@ fun FloatingBottomBar(
             tonalElevation = 8.dp,
             shadowElevation = 10.dp,
             border = BorderStroke(
-                width = 1.2.dp,
-                color = MaterialTheme.colorScheme.outlineVariant
+                width = if (a11y.state.highContrastText) 1.8.dp else 1.2.dp,
+                color = if (a11y.state.highContrastText) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant
             ),
             modifier = Modifier
                 .widthIn(max = 560.dp)
@@ -140,6 +152,8 @@ private fun FloatingNavItem(
         NavTab.SETTINGS -> if (isSelected) Icons.Filled.Settings else Icons.Outlined.Settings
     }
 
+    val a11y = LocalAccessibilitySuite.current
+
     Column(
         modifier = Modifier
             .clip(CircleShape)
@@ -148,6 +162,11 @@ private fun FloatingNavItem(
                 indication = ripple(bounded = false, radius = 24.dp, color = MaterialTheme.colorScheme.primary),
                 onClick = onClick
             )
+            .semantics(mergeDescendants = true) {
+                role = Role.Tab
+                selected = isSelected
+                stateDescription = if (isSelected) "Selected" else "Not selected"
+            }
             .padding(horizontal = 8.dp, vertical = 4.dp)
             .testTag("nav_item_${tab.name.lowercase()}"),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -158,6 +177,13 @@ private fun FloatingNavItem(
                 .scale(bounceScale)
                 .clip(CircleShape)
                 .background(animatedBgColor)
+                .then(
+                    if (isSelected && (a11y.state.highContrastText || a11y.isColorCorrectionActive)) {
+                        Modifier.border(1.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                    } else {
+                        Modifier
+                    }
+                )
                 .padding(horizontal = 14.dp, vertical = 6.dp),
             contentAlignment = Alignment.Center
         ) {

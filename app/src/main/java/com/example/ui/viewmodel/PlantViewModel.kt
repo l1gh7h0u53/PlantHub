@@ -479,6 +479,39 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * Emergency cultivar start-over override updating only the Plant Identifier, Strain,
+     * and target elapsed Day count without altering care logs, Photo Vault entries, or timers.
+     *
+     * TECHNICAL LOGIC:
+     * Screen day counters calculate `((now - plantedDate) / 86_400_000L).coerceAtLeast(0) + 1`.
+     * Shifting `plantedDate` backward by `(dayAmount - 1)` 24-hour intervals guarantees all
+     * Tracker, Home, and Vault badges immediately reflect the exact chosen Day number without
+     * introducing a duplicate Room schema column.
+     */
+    fun updatePlantEmergencyInfo(
+        plantId: Long,
+        name: String,
+        strain: String,
+        dayAmount: Int
+    ) {
+        viewModelScope.launch {
+            val plant = repository.getPlantOnce(plantId) ?: return@launch
+            val cleanName = name.trim().ifEmpty { plant.name }
+            val cleanStrain = strain.trim()
+            val targetDay = dayAmount.coerceAtLeast(1)
+            val oneDayMillis = 86_400_000L
+            val adjustedPlantedDate = System.currentTimeMillis() - ((targetDay - 1L) * oneDayMillis)
+            repository.updatePlant(
+                plant.copy(
+                    name = cleanName,
+                    strain = cleanStrain,
+                    plantedDate = adjustedPlantedDate
+                )
+            )
+        }
+    }
+
+    /**
      * Starts or resumes the photoperiod light timer for a cultivar.
      *
      * TECHNICAL LOGIC: Clock-Drift Prevention
