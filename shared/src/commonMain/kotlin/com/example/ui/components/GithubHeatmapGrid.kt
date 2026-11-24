@@ -231,8 +231,7 @@ fun GithubHeatmapGrid(
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                             modifier = Modifier.padding(end = 6.dp)
                         ) {
-                            val dayNames = listOf("S", "M", "T", "W", "T", "F", "S")
-                            dayNames.forEachIndexed { index, name ->
+                            HeatmapDayAxisLabels.forEachIndexed { index, name ->
                                 Box(
                                     modifier = Modifier.size(14.dp),
                                     contentAlignment = Alignment.Center
@@ -249,6 +248,16 @@ fun GithubHeatmapGrid(
                             }
                         }
 
+                        val selectedDateKey = selectedDay?.dateKey
+                        val defaultBorderColor = when {
+                            a11y.state.highContrastText || a11y.useNonColorPatterns ->
+                                MaterialTheme.colorScheme.outline.copy(alpha = 0.75f)
+                            isDark -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            else -> Color.Transparent
+                        }
+                        val selectedBorderColor = MaterialTheme.colorScheme.primary
+                        val defaultBorderWidth = if (a11y.state.highContrastText) 1.5.dp else 0.5.dp
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -256,37 +265,29 @@ fun GithubHeatmapGrid(
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             gridData.weeks.forEach { week ->
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    week.forEach { day ->
-                                        val cellColor = a11y.heatmapColor(day.level)
-                                        val isSelected = selectedDay?.dateKey == day.dateKey
-                                        val glyphColor = if (day.level >= 3 && !isDark) Color.White else MaterialTheme.colorScheme.onSurface
-
-                                        Box(
-                                            modifier = Modifier
-                                                .size(14.dp)
-                                                .clip(RoundedCornerShape(3.dp))
-                                                .background(cellColor)
-                                                .border(
-                                                    width = if (isSelected || a11y.state.highContrastText) 1.5.dp else 0.5.dp,
-                                                    color = when {
-                                                        isSelected -> MaterialTheme.colorScheme.primary
-                                                        a11y.state.highContrastText || a11y.useNonColorPatterns ->
-                                                            MaterialTheme.colorScheme.outline.copy(alpha = 0.75f)
-                                                        isDark -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                                        else -> Color.Transparent
-                                                    },
-                                                    shape = RoundedCornerShape(3.dp)
-                                                )
-                                                .clickable { selectedDay = day }
-                                                .semantics {
-                                                    contentDescription = "${day.displayDate}: ${day.careLogs.size} care actions, activity level ${day.level} of 4"
+                                androidx.compose.runtime.key(week.firstOrNull()?.dateKey ?: week.hashCode()) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        week.forEach { day ->
+                                            androidx.compose.runtime.key(day.dateKey) {
+                                                val isSelected = selectedDateKey == day.dateKey
+                                                val cellColor = a11y.heatmapColor(day.level)
+                                                val glyphColor = if (day.level >= 3 && !isDark) {
+                                                    Color.White
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurface
                                                 }
-                                                .testTag("day_cell_${day.dateKey}"),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (a11y.useNonColorPatterns && day.level > 0) {
-                                                HeatmapPatternGlyph(level = day.level, tint = glyphColor)
+                                                HeatmapDayCell(
+                                                    dateKey = day.dateKey,
+                                                    displayDate = day.displayDate,
+                                                    logCount = day.careLogs.size,
+                                                    level = day.level,
+                                                    cellColor = cellColor,
+                                                    borderColor = if (isSelected) selectedBorderColor else defaultBorderColor,
+                                                    borderWidth = if (isSelected) 1.5.dp else defaultBorderWidth,
+                                                    usePattern = a11y.useNonColorPatterns && day.level > 0,
+                                                    glyphColor = glyphColor,
+                                                    onClick = { selectedDay = day }
+                                                )
                                             }
                                         }
                                     }
@@ -314,12 +315,11 @@ fun GithubHeatmapGrid(
                             Box(
                                 modifier = Modifier
                                     .size(12.dp)
-                                    .clip(RoundedCornerShape(2.5.dp))
-                                    .background(a11y.heatmapColor(lvl))
+                                    .background(a11y.heatmapColor(lvl), HeatmapLegendCellShape)
                                     .border(
                                         if (a11y.state.highContrastText) 1.dp else 0.5.dp,
                                         if (isDark || a11y.state.highContrastText) MaterialTheme.colorScheme.outlineVariant else Color.LightGray,
-                                        RoundedCornerShape(2.5.dp)
+                                        HeatmapLegendCellShape
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -408,6 +408,41 @@ fun GithubHeatmapGrid(
                     }
                 }
             }
+        }
+    }
+}
+
+private val HeatmapDayAxisLabels = listOf("S", "M", "T", "W", "T", "F", "S")
+private val HeatmapCellShape = RoundedCornerShape(3.dp)
+private val HeatmapLegendCellShape = RoundedCornerShape(2.5.dp)
+
+@Composable
+private fun HeatmapDayCell(
+    dateKey: String,
+    displayDate: String,
+    logCount: Int,
+    level: Int,
+    cellColor: Color,
+    borderColor: Color,
+    borderWidth: androidx.compose.ui.unit.Dp,
+    usePattern: Boolean,
+    glyphColor: Color,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(14.dp)
+            .background(cellColor, HeatmapCellShape)
+            .border(width = borderWidth, color = borderColor, shape = HeatmapCellShape)
+            .clickable(onClick = onClick)
+            .semantics {
+                contentDescription = "$displayDate: $logCount care actions, activity level $level of 4"
+            }
+            .testTag("day_cell_$dateKey"),
+        contentAlignment = Alignment.Center
+    ) {
+        if (usePattern) {
+            HeatmapPatternGlyph(level = level, tint = glyphColor)
         }
     }
 }

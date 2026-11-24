@@ -50,6 +50,10 @@ object PlantBackupManager {
     const val KEY_BACKUP_FOLDER_URI = "weekly_backup_folder_uri"
     const val KEY_LAST_BACKUP_TIME = "weekly_backup_last_time"
 
+    private val folderBackupTimestampFormat = object : ThreadLocal<SimpleDateFormat>() {
+        override fun initialValue(): SimpleDateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+    }
+
     fun isAutoBackupEnabled(context: Context): Boolean {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean(KEY_AUTO_BACKUP_ENABLED, false)
@@ -167,15 +171,19 @@ object PlantBackupManager {
 
             val jsonString = root.toString()
 
-            // Save to internal file
+            // Atomic write to internal file avoids partial writes without duplicating full JSON into SharedPreferences
             val file = File(context.filesDir, BACKUP_FILE_NAME)
-            file.writeText(jsonString)
+            val tmpFile = File(context.filesDir, "$BACKUP_FILE_NAME.tmp")
+            tmpFile.writeText(jsonString)
+            if (!tmpFile.renameTo(file)) {
+                file.writeText(jsonString)
+                tmpFile.delete()
+            }
 
-            // Also mirror in SharedPreferences
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .edit()
                 .putBoolean(KEY_HAS_BACKUP, true)
-                .putString("backup_json", jsonString)
+                .remove("backup_json")
                 .apply()
 
             Log.d(TAG, "Successfully backed up ${plants.size} plants, ${logs.size} logs, ${photos.size} photos")
@@ -554,7 +562,8 @@ object PlantBackupManager {
         return try {
             val docId = DocumentsContract.getTreeDocumentId(treeUri)
             val parentDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
-            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+            val fmt = folderBackupTimestampFormat.get() ?: SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+            val timeStamp = fmt.format(Date())
             val fileName = "planthub_backup_$timeStamp.json"
             val newFileUri = DocumentsContract.createDocument(
                 context.contentResolver,
@@ -1367,19 +1376,22 @@ object PlantBackupManager {
             // 1. Wipe all existing data completely across all four tables (cascading safe)
             repository.clearAllData()
 
-            // 2. Insert new plants while tracking ID mapping (oldId -> newId and 1-based index -> newId)
-            val idMapping = mutableMapOf<Long, Long>()
-            data.plants.forEachIndexed { index, plant ->
-                val oldId = plant.id
-                val newPlant = plant.copy(id = 0L)
-                val newId = repository.insertPlant(newPlant)
-                if (oldId != 0L) {
-                    idMapping[oldId] = newId
-                }
-                idMapping[newId] = newId
-                val oneBasedIndex = (index + 1).toLong()
-                if (!idMapping.containsKey(oneBasedIndex)) {
-                    idMapping[oneBasedIndex] = newId
+            // 2. Batch-insert plants in a single Room transaction while preserving ID mapping
+            val idMapping = HashMap<Long, Long>((data.plants.size * 2).coerceAtLeast(8))
+            if (data.plants.isNotEmpty()) {
+                val plantsToInsert = data.plants.map { it.copy(id = 0L) }
+                val insertedIds = repository.insertPlants(plantsToInsert)
+                data.plants.forEachIndexed { index, plant ->
+                    val oldId = plant.id
+                    val newId = insertedIds.getOrElse(index) { (index + 1).toLong() }
+                    if (oldId != 0L) {
+                        idMapping[oldId] = newId
+                    }
+                    idMapping[newId] = newId
+                    val oneBasedIndex = (index + 1).toLong()
+                    if (!idMapping.containsKey(oneBasedIndex)) {
+                        idMapping[oneBasedIndex] = newId
+                    }
                 }
             }
 
@@ -1396,57 +1408,53 @@ object PlantBackupManager {
                 createdId
             }
 
-            // 3. Insert Care Logs (guaranteed valid foreign key to primary cultivar if unlinked)
-            var insertedLogsCount = 0
+            // 3. Batch-insert Care Logs in one SQLite transaction
+            val logsToInsert = ArrayList<CareLog>(data.logs.size)
             for (log in data.logs) {
-                try {
-                    val targetPlantId = if (log.plantId != 0L && idMapping.containsKey(log.plantId)) {
-                        idMapping[log.plantId]!!
-                    } else {
-                        defaultPlantId
-                    }
-                    repository.insertCareLog(log.copy(id = 0L, plantId = targetPlantId))
-                    insertedLogsCount++
-                } catch (e: Exception) {
-                    Log.w(TAG, "Skipped invalid care log entry: ${e.message}")
+                val targetPlantId = if (log.plantId != 0L && idMapping.containsKey(log.plantId)) {
+                    idMapping[log.plantId]!!
+                } else {
+                    defaultPlantId
                 }
+                logsToInsert.add(log.copy(id = 0L, plantId = targetPlantId))
+            }
+            if (logsToInsert.isNotEmpty()) {
+                repository.insertCareLogs(logsToInsert)
             }
 
-            // 4. Insert Photos (with normalized URI & fallback to primary cultivar if unlinked)
-            var insertedPhotosCount = 0
+            // 4. Batch-insert Photos (with normalized URI & fallback to primary cultivar if unlinked)
+            val photosToInsert = ArrayList<PhotoEntry>(data.photos.size)
             for (photo in data.photos) {
-                try {
-                    val targetPlantId = if (photo.plantId != 0L && idMapping.containsKey(photo.plantId)) {
-                        idMapping[photo.plantId]!!
-                    } else {
-                        defaultPlantId
-                    }
-                    val normalizedUri = normalizePhotoUri(context, photo.imageUri)
-                    repository.insertPhotoEntry(
-                        photo.copy(
-                            id = 0L,
-                            plantId = targetPlantId,
-                            imageUri = normalizedUri
-                        )
-                    )
-                    insertedPhotosCount++
-                } catch (e: Exception) {
-                    Log.w(TAG, "Skipped invalid photo entry: ${e.message}")
+                val targetPlantId = if (photo.plantId != 0L && idMapping.containsKey(photo.plantId)) {
+                    idMapping[photo.plantId]!!
+                } else {
+                    defaultPlantId
                 }
+                val normalizedUri = normalizePhotoUri(context, photo.imageUri)
+                photosToInsert.add(
+                    photo.copy(
+                        id = 0L,
+                        plantId = targetPlantId,
+                        imageUri = normalizedUri
+                    )
+                )
+            }
+            if (photosToInsert.isNotEmpty()) {
+                repository.insertPhotos(photosToInsert)
             }
 
-            // 5. Insert Reminder Settings
+            // 5. Batch-insert Reminder Settings
+            val remindersToInsert = ArrayList<ReminderSetting>(data.reminders.size)
             for (reminder in data.reminders) {
-                try {
-                    val targetPlantId = if (reminder.plantId != 0L && idMapping.containsKey(reminder.plantId)) {
-                        idMapping[reminder.plantId]!!
-                    } else {
-                        defaultPlantId
-                    }
-                    repository.insertReminder(reminder.copy(id = 0L, plantId = targetPlantId))
-                } catch (e: Exception) {
-                    Log.w(TAG, "Skipped invalid reminder entry: ${e.message}")
+                val targetPlantId = if (reminder.plantId != 0L && idMapping.containsKey(reminder.plantId)) {
+                    idMapping[reminder.plantId]!!
+                } else {
+                    defaultPlantId
                 }
+                remindersToInsert.add(reminder.copy(id = 0L, plantId = targetPlantId))
+            }
+            if (remindersToInsert.isNotEmpty()) {
+                repository.insertReminders(remindersToInsert)
             }
 
             // 6. Update internal backup cache with fresh data
@@ -1455,7 +1463,7 @@ object PlantBackupManager {
             val freshPhotos = repository.getAllPhotosOnce()
             saveBackup(context, freshPlants, freshLogs, freshPhotos)
 
-            Log.d(TAG, "Successfully restored ${freshPlants.size} plants, $insertedLogsCount logs, $insertedPhotosCount photos")
+            Log.d(TAG, "Successfully restored ${freshPlants.size} plants, ${logsToInsert.size} logs, ${photosToInsert.size} photos")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Error executing database restore: ${e.message}", e)

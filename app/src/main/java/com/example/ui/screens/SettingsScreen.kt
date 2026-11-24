@@ -255,7 +255,7 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Expressive Screen Header
-        item {
+        item(key = "settings_header", contentType = "settings_header") {
             Surface(
                 shape = RoundedCornerShape(24.dp),
                 color = MaterialTheme.colorScheme.surface,
@@ -301,7 +301,7 @@ fun SettingsScreen(
         }
 
         // Group 1: Appearance & Theme (M3 Expressive Grouped Card)
-        item {
+        item(key = "settings_appearance", contentType = "settings_group") {
             ExpressiveSettingsGroup(
                 icon = Icons.Filled.Palette,
                 title = "Appearance & Theme",
@@ -347,7 +347,7 @@ fun SettingsScreen(
         }
 
         // Group 2: Notifications & Local Alerts (M3 Expressive Grouped Card)
-        item {
+        item(key = "settings_notifications", contentType = "settings_group") {
             ExpressiveSettingsGroup(
                 icon = Icons.Filled.Notifications,
                 title = "Local Care Alerts & Photoperiod Alarms",
@@ -609,7 +609,7 @@ fun SettingsScreen(
         }
 
         // Group 3: Local Database & Storage Vault (M3 Expressive Grouped Card)
-        item {
+        item(key = "settings_storage", contentType = "settings_group") {
             ExpressiveSettingsGroup(
                 icon = Icons.Filled.Storage,
                 title = "Offline SQLite & Room Safekeeping",
@@ -768,7 +768,9 @@ fun SettingsScreen(
 
                                 if (lastBackupTimestamp > 0L) {
                                     Spacer(modifier = Modifier.height(6.dp))
-                                    val lastDate = SimpleDateFormat("MMM d, yyyy • HH:mm", Locale.getDefault()).format(Date(lastBackupTimestamp))
+                                    val lastDate = remember(lastBackupTimestamp) {
+                                        formatLastBackupDate(lastBackupTimestamp)
+                                    }
                                     Text(
                                         text = "Last automated backup: $lastDate",
                                         style = MaterialTheme.typography.labelSmall,
@@ -892,7 +894,8 @@ fun SettingsScreen(
                                 // Hero Full ZIP Backup Button (Photos + Ledger)
                                 Button(
                                     onClick = {
-                                        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                                        val fmt = zipExportDateFormat.get() ?: SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+                                        val timeStamp = fmt.format(Date())
                                         val fileName = "planthub_complete_backup_$timeStamp.zip"
                                         zipExportLauncher.launch(fileName)
                                     },
@@ -1051,7 +1054,7 @@ fun SettingsScreen(
         }
 
         // Group: Release Notes & Architectural Changelog (M3 Expressive Grouped Card)
-        item {
+        item(key = "settings_changelog", contentType = "settings_group") {
             ExpressiveSettingsGroup(
                 icon = Icons.Filled.AutoAwesome,
                 title = "Release Notes & Changelog",
@@ -1195,7 +1198,7 @@ fun SettingsScreen(
         }
 
         // Group 4: Privacy & Philosophy (Expandable Accordion Menu Point)
-        item {
+        item(key = "settings_privacy", contentType = "settings_group") {
             ExpressiveSettingsGroup(
                 icon = Icons.Filled.Shield,
                 title = "Privacy & Philosophy",
@@ -1660,4 +1663,28 @@ private fun MetricPill(label: String, count: String) {
             )
         }
     }
+}
+
+private val lastBackupDateFormatThreadLocal = object : ThreadLocal<Pair<Locale, SimpleDateFormat>>() {
+    override fun initialValue(): Pair<Locale, SimpleDateFormat> {
+        val locale = Locale.getDefault()
+        return locale to SimpleDateFormat("MMM d, yyyy • HH:mm", locale)
+    }
+}
+
+private val zipExportDateFormat = object : ThreadLocal<SimpleDateFormat>() {
+    override fun initialValue(): SimpleDateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+}
+
+private fun formatLastBackupDate(timestamp: Long): String {
+    val currentLocale = Locale.getDefault()
+    val cached = lastBackupDateFormatThreadLocal.get()
+    val fmt = if (cached != null && cached.first == currentLocale) {
+        cached.second
+    } else {
+        SimpleDateFormat("MMM d, yyyy • HH:mm", currentLocale).also {
+            lastBackupDateFormatThreadLocal.set(currentLocale to it)
+        }
+    }
+    return fmt.format(Date(timestamp))
 }

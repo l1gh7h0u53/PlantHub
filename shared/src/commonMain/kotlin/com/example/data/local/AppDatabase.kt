@@ -79,6 +79,11 @@ abstract class AppDatabase : RoomDatabase() {
                     override fun onOpen(connection: SQLiteConnection) {
                         super.onOpen(connection)
                         connection.execSQL("PRAGMA foreign_keys = ON;")
+                        // Performance: WAL allows concurrent UI reads during background writes;
+                        // synchronous=NORMAL and MEMORY temp_store eliminate unnecessary fsync stalls.
+                        connection.execSQL("PRAGMA journal_mode = WAL;")
+                        connection.execSQL("PRAGMA synchronous = NORMAL;")
+                        connection.execSQL("PRAGMA temp_store = MEMORY;")
                     }
                 })
                 .setDriver(BundledSQLiteDriver())

@@ -440,9 +440,10 @@ fun ExpressiveWavyProgressIndicator(
     val a11y = LocalAccessibilitySuite.current
     val clampedProgress = progress.coerceIn(0f, 1f)
 
-    val transition = rememberInfiniteTransition(label = "m3_wavy_progress_transition")
-    val wavePhase by if (isRunning) {
-        transition.animateFloat(
+    // Only register an infinite choreographer animation while the timer is actively running
+    val wavePhase = if (isRunning) {
+        val transition = rememberInfiniteTransition(label = "m3_wavy_progress_transition")
+        val animatedPhase by transition.animateFloat(
             initialValue = 0f,
             targetValue = (2.0 * PI).toFloat(),
             animationSpec = infiniteRepeatable(
@@ -450,8 +451,9 @@ fun ExpressiveWavyProgressIndicator(
             ),
             label = "wave_phase"
         )
+        animatedPhase
     } else {
-        remember { mutableStateOf(0f) }
+        0f
     }
 
     val amplitudeFraction by animateFloatAsState(
@@ -459,6 +461,24 @@ fun ExpressiveWavyProgressIndicator(
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
         label = "m3_wave_amplitude"
     )
+
+    // Reusable Canvas objects eliminate 60fps per-frame heap allocations
+    val activeWavePath = remember { Path() }
+    val dashedStrokeEffect = remember { PathEffect.dashPathEffect(floatArrayOf(14f, 8f), 0f) }
+    val gradientColors = remember(
+        isLightsOn,
+        baseColor,
+        a11y.lightsOnGradientStart,
+        a11y.lightsOnGradientEnd,
+        a11y.lightsOffGradientStart,
+        a11y.lightsOffGradientEnd
+    ) {
+        if (isLightsOn) {
+            listOf(a11y.lightsOnGradientStart, baseColor, a11y.lightsOnGradientEnd)
+        } else {
+            listOf(a11y.lightsOffGradientStart, baseColor, a11y.lightsOffGradientEnd)
+        }
+    }
 
     Box(
         modifier = modifier
@@ -511,7 +531,7 @@ fun ExpressiveWavyProgressIndicator(
             }
 
             if (activeEnd > strokeWidth / 2f) {
-                val activeWavePath = Path()
+                activeWavePath.reset()
                 val startX = strokeWidth / 2f
                 val startY = centerY + sin(startX * frequency + wavePhase) * targetAmplitude
                 activeWavePath.moveTo(startX, startY)
@@ -526,31 +546,15 @@ fun ExpressiveWavyProgressIndicator(
                 val endY = centerY + sin(activeEnd * frequency + wavePhase) * targetAmplitude
                 activeWavePath.lineTo(activeEnd, endY)
 
-                val waveBrush = if (isLightsOn) {
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            a11y.lightsOnGradientStart,
-                            baseColor,
-                            a11y.lightsOnGradientEnd
-                        ),
-                        startX = 0f,
-                        endX = activeEnd.coerceAtLeast(1f)
-                    )
-                } else {
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            a11y.lightsOffGradientStart,
-                            baseColor,
-                            a11y.lightsOffGradientEnd
-                        ),
-                        startX = 0f,
-                        endX = activeEnd.coerceAtLeast(1f)
-                    )
-                }
+                val waveBrush = Brush.horizontalGradient(
+                    colors = gradientColors,
+                    startX = 0f,
+                    endX = activeEnd.coerceAtLeast(1f)
+                )
 
                 // Under OS Color Correction, differentiate Lights OFF/paused via dashed stroke geometry
                 val strokeEffect = if (a11y.useNonColorPatterns && !isLightsOn) {
-                    PathEffect.dashPathEffect(floatArrayOf(14f, 8f), 0f)
+                    dashedStrokeEffect
                 } else {
                     null
                 }

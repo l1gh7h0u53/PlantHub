@@ -22,12 +22,18 @@ import com.example.service.LightCycleTickerService
 import com.example.util.PlantBackupManager
 import com.example.util.SeedData
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -47,6 +53,7 @@ import kotlinx.coroutines.withContext
  * - Handles universal data backup and restore operations (Full ZIP bundles, multi-table CSV, and JSON).
  * - Persists and manages user preferences (theming, reminders, and automated weekly backups).
  */
+@OptIn(FlowPreview::class)
 class PlantViewModel(application: Application) : AndroidViewModel(application) {
 
     // Repository mediating access to on-device Room SQLite database
@@ -139,13 +146,20 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         if (id != null) plants.find { it.id == id } else plants.firstOrNull()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    val selectedPlantLogs: StateFlow<List<CareLog>> = combine(allCareLogs, selectedPlant) { logs, plant ->
-        if (plant == null) emptyList() else logs.filter { it.plantId == plant.id }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    // Key log/photo filtering strictly on the active plant ID so timer updates do not refilter or rebuild heatmaps
+    private val selectedPlantIdFlow = selectedPlant
+        .map { it?.id }
+        .distinctUntilChanged()
 
-    val selectedPlantPhotos: StateFlow<List<PhotoEntry>> = combine(allPhotos, selectedPlant) { photos, plant ->
-        if (plant == null) emptyList() else photos.filter { it.plantId == plant.id }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val selectedPlantLogs: StateFlow<List<CareLog>> = combine(allCareLogs, selectedPlantIdFlow) { logs, plantId ->
+        if (plantId == null) emptyList() else logs.filter { it.plantId == plantId }
+    }.flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val selectedPlantPhotos: StateFlow<List<PhotoEntry>> = combine(allPhotos, selectedPlantIdFlow) { photos, plantId ->
+        if (plantId == null) emptyList() else photos.filter { it.plantId == plantId }
+    }.flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val currentLightStatus: StateFlow<LightCycleStatus?> = combine(selectedPlant, _clockTicker) { plant, _ ->
         plant?.let { LightCycleEngine.calculateStatus(it) }
@@ -157,19 +171,21 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
             HeatmapViewMode.YEARLY -> HeatmapCalculator.calculateYearly(logs)
             HeatmapViewMode.MONTHLY -> HeatmapCalculator.calculate16Weeks(logs)
         }
-    }.stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(5000),
-        HeatmapCalculator.calculate16Weeks(emptyList())
-    )
+    }.flowOn(Dispatchers.Default)
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            HeatmapCalculator.calculate16Weeks(emptyList())
+        )
 
-    val fleetHeatmapData: StateFlow<HeatmapGridData> = combine(allCareLogs, _heatmapViewMode) { logs, _ ->
-        HeatmapCalculator.calculate16Weeks(logs)
-    }.stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(5000),
-        HeatmapCalculator.calculate16Weeks(emptyList())
-    )
+    val fleetHeatmapData: StateFlow<HeatmapGridData> = allCareLogs
+        .map { logs -> HeatmapCalculator.calculate16Weeks(logs) }
+        .flowOn(Dispatchers.Default)
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            HeatmapCalculator.calculate16Weeks(emptyList())
+        )
 
     private val _hasSeenOnboarding = MutableStateFlow(prefs.getBoolean("has_seen_onboarding_v1_7", false))
     val hasSeenOnboarding: StateFlow<Boolean> = _hasSeenOnboarding.asStateFlow()
@@ -191,122 +207,140 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
-        // Persistent cultivar lifecycle preservation across app updates
-        viewModelScope.launch {
+        // Persistent cultivar lifecycle preservation across app updates (offloaded to IO)
+        viewModelScope.launch(Dispatchers.IO) {
             val count = repository.getPlantCount()
-            if (count == 0) {
-                // If the user previously had custom plants or updated the app, restore from backup
-                if (PlantBackupManager.hasSavedBackup(application)) {
-                    PlantBackupManager.restoreBackup(application, repository)
-                }
+            if (count == 0 && PlantBackupManager.hasSavedBackup(application)) {
+                PlantBackupManager.restoreBackup(application, repository)
             }
         }
 
-        // Auto-save backup continuously whenever plants, logs, or photos change
+        // Debounced background auto-save backup so rapid edits coalesce off the main thread
         viewModelScope.launch {
             combine(allPlants, allCareLogs, allPhotos) { p, l, ph ->
                 Triple(p, l, ph)
-            }.collect { (plants, logs, photos) ->
-                if (plants.isNotEmpty()) {
-                    PlantBackupManager.saveBackup(application, plants, logs, photos)
-                }
             }
+                .distinctUntilChanged()
+                .debounce(400L)
+                .flowOn(Dispatchers.Default)
+                .collectLatest { (plants, logs, photos) ->
+                    if (plants.isNotEmpty()) {
+                        withContext(Dispatchers.IO) {
+                            PlantBackupManager.saveBackup(application, plants, logs, photos)
+                        }
+                    }
+                }
         }
 
-        // TECHNICAL LOGIC & ARCHITECTURAL DESIGN: Dual-Cadence Photoperiod Ticker
-        // 1. One-Second UI Pulse (_clockTicker):
-        //    Updates the in-memory StateFlow timestamp every 1000ms. UI Composables (TimerScreen and gauges)
-        //    observe this ticker to compute smooth, jitter-free countdown text without writing to SQLite.
-        // 2. Three-Second Evaluation Batching:
-        //    Evaluating database state every second causes unnecessary SQLite I/O and battery drain.
-        //    Instead, we inspect active cultivars every 3 seconds to check if a 24h photoperiod has concluded,
-        //    transitioning the plant to `isPausedForMaintenance = true` and dispatching dark cycle alerts.
+        // TECHNICAL LOGIC & ARCHITECTURAL DESIGN: On-Demand Dual-Cadence Photoperiod Ticker
+        // 1. Demand-Gated 1s UI Pulse (_clockTicker):
+        //    Only runs while at least one cultivar has an active, non-maintenance photoperiod timer.
+        //    When all timers are idle/paused, zero background wakeups or main-thread ticks occur.
+        // 2. Three-Second In-Memory Evaluation Batching:
+        //    Evaluates cycle completion against in-memory `allPlants.value` instead of polling SQLite,
+        //    only persisting to Room when a 24h cycle actually transitions into maintenance lockout.
         viewModelScope.launch {
-            var tickCount = 0
             var wasLiveNotificationActive = false
             var lastLiveNotifyPhase = ""
             var lastLiveNotifyMinute = -1
 
-            while (isActive) {
-                delay(1000)
-                _clockTicker.value = System.currentTimeMillis()
-                tickCount++
+            allPlants
+                .map { plants -> plants.any { it.isTimerRunning && !it.isPausedForMaintenance } }
+                .distinctUntilChanged()
+                .collectLatest { hasRunningTimer ->
+                    if (!hasRunningTimer) {
+                        _clockTicker.value = System.currentTimeMillis()
+                        if (wasLiveNotificationActive) {
+                            LightCycleTickerService.stop(application)
+                            NotificationHelper.cancelLightCycleLiveUpdate(application)
+                            wasLiveNotificationActive = false
+                            lastLiveNotifyPhase = ""
+                            lastLiveNotifyMinute = -1
+                        }
+                        return@collectLatest
+                    }
 
-                // Batch check: evaluate 24-hour cycle completion and live notification sync every 3 seconds
-                if (tickCount % 3 == 0) {
-                    val currentPlants = repository.getAllPlantsOnce()
-                    val now = System.currentTimeMillis()
-                    for (plant in currentPlants) {
-                        val startedAt = plant.timerStartedAt
-                        if (plant.isTimerRunning && startedAt != null) {
-                            val totalSec = (plant.lightOnHours + plant.lightOffHours) * 3600L
-                            if (totalSec > 0) {
-                                val elapsedSec = (now - startedAt) / 1000L
-                                if (elapsedSec >= totalSec) {
-                                    // DESIGN DECISION: Safety Lockout on Cycle Completion
-                                    // Cultivar has completed both ON and OFF durations. Set `isPausedForMaintenance = true`
-                                    // so lights do not unexpectedly turn on while tent is sealed or dark.
-                                    val pausedPlant = plant.copy(
-                                        isTimerRunning = false,
-                                        isPausedForMaintenance = true,
-                                        timerStartedAt = null,
-                                        timerPausedRemainingSec = null
-                                    )
-                                    repository.updatePlant(pausedPlant)
-                                    NotificationHelper.sendLightMaintenanceAlert(
-                                        context = application,
-                                        notificationId = (2000 + plant.id).toInt(),
-                                        plantName = plant.name,
-                                        strain = plant.strain
-                                    )
+                    var tickCount = 0
+                    while (isActive) {
+                        val now = System.currentTimeMillis()
+                        _clockTicker.value = now
+
+                        // Batch check every 3 seconds using in-memory cultivar state (zero redundant SQLite reads)
+                        if (tickCount % 3 == 0) {
+                            val currentPlants = allPlants.value
+                            for (plant in currentPlants) {
+                                val startedAt = plant.timerStartedAt
+                                if (plant.isTimerRunning && startedAt != null) {
+                                    val totalSec = (plant.lightOnHours + plant.lightOffHours) * 3600L
+                                    if (totalSec > 0 && (now - startedAt) / 1000L >= totalSec) {
+                                        // DESIGN DECISION: Safety Lockout on Cycle Completion
+                                        val pausedPlant = plant.copy(
+                                            isTimerRunning = false,
+                                            isPausedForMaintenance = true,
+                                            timerStartedAt = null,
+                                            timerPausedRemainingSec = null
+                                        )
+                                        withContext(Dispatchers.IO) {
+                                            repository.updatePlant(pausedPlant)
+                                        }
+                                        NotificationHelper.sendLightMaintenanceAlert(
+                                            context = application,
+                                            notificationId = (2000 + plant.id).toInt(),
+                                            plantName = plant.name,
+                                            strain = plant.strain
+                                        )
+                                    }
                                 }
                             }
+
+                            // Synchronize Android 16 Live Update Notification & Status Bar Chip
+                            val isLiveEnabled = _liveTimerChipEnabled.value
+                            val selectedId = _selectedPlantId.value
+                            val activeRunningPlant = currentPlants.firstOrNull {
+                                it.id == selectedId && it.isTimerRunning && !it.isPausedForMaintenance
+                            } ?: currentPlants.firstOrNull { it.isTimerRunning && !it.isPausedForMaintenance }
+
+                            if (activeRunningPlant != null && isLiveEnabled) {
+                                val status = LightCycleEngine.calculateStatus(activeRunningPlant)
+                                val currentPhase = status.currentPhaseName
+                                val currentMinute = (status.hoursRemainingInPhase * 60 + status.minutesRemainingInPhase).toInt()
+
+                                if (!wasLiveNotificationActive) {
+                                    LightCycleTickerService.start(application, activeRunningPlant.id)
+                                }
+
+                                if (!wasLiveNotificationActive || currentPhase != lastLiveNotifyPhase || currentMinute != lastLiveNotifyMinute) {
+                                    NotificationHelper.updateLightCycleLiveUpdate(
+                                        context = application,
+                                        status = status,
+                                        plantName = activeRunningPlant.name,
+                                        plantId = activeRunningPlant.id
+                                    )
+                                    wasLiveNotificationActive = true
+                                    lastLiveNotifyPhase = currentPhase
+                                    lastLiveNotifyMinute = currentMinute
+                                }
+                            } else if (wasLiveNotificationActive) {
+                                LightCycleTickerService.stop(application)
+                                NotificationHelper.cancelLightCycleLiveUpdate(application)
+                                wasLiveNotificationActive = false
+                                lastLiveNotifyPhase = ""
+                                lastLiveNotifyMinute = -1
+                            }
                         }
-                    }
 
-                    // Synchronize Android 16 Live Update Notification & Status Bar Chip
-                    // Respect user's toggle setting: if disabled, do not show and cancel if active
-                    val isLiveEnabled = _liveTimerChipEnabled.value
-                    val activeRunningPlant = currentPlants.firstOrNull { it.id == _selectedPlantId.value && it.isTimerRunning && !it.isPausedForMaintenance }
-                        ?: currentPlants.firstOrNull { it.isTimerRunning && !it.isPausedForMaintenance }
-
-                    if (activeRunningPlant != null && isLiveEnabled) {
-                        val status = LightCycleEngine.calculateStatus(activeRunningPlant)
-                        val currentPhase = status.currentPhaseName
-
-                        val currentMinute = (status.hoursRemainingInPhase * 60 + status.minutesRemainingInPhase).toInt()
-
-                        // Ensure continuous background ticker service is active
-                        if (!wasLiveNotificationActive) {
-                            LightCycleTickerService.start(application, activeRunningPlant.id)
-                        }
-
-                        // Update when timer starts/resumes, when phase changes (e.g. ON -> OFF),
-                        // or every minute to keep progress bar and status chip countdown text in sync
-                        if (!wasLiveNotificationActive || currentPhase != lastLiveNotifyPhase || currentMinute != lastLiveNotifyMinute) {
-                            NotificationHelper.updateLightCycleLiveUpdate(
-                                context = application,
-                                status = status,
-                                plantName = activeRunningPlant.name,
-                                plantId = activeRunningPlant.id
-                            )
-                            wasLiveNotificationActive = true
-                            lastLiveNotifyPhase = currentPhase
-                            lastLiveNotifyMinute = currentMinute
-                        }
-                    } else if (wasLiveNotificationActive) {
-                        LightCycleTickerService.stop(application)
-                        NotificationHelper.cancelLightCycleLiveUpdate(application)
-                        wasLiveNotificationActive = false
-                        lastLiveNotifyPhase = ""
-                        lastLiveNotifyMinute = -1
+                        tickCount++
+                        delay(1000)
                     }
                 }
+        }
 
-                // Check automated weekly backup schedule every 60 seconds
-                if (tickCount % 60 == 0) {
-                    checkAndTriggerAutomatedWeeklyBackup()
-                }
+        // Lightweight automated weekly backup scheduler (offloaded to IO, hourly cadence)
+        viewModelScope.launch(Dispatchers.IO) {
+            delay(2000)
+            while (isActive) {
+                checkAndTriggerAutomatedWeeklyBackup()
+                delay(3_600_000L)
             }
         }
     }
@@ -631,18 +665,24 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
      *   if never watered), dispatches a localized notification to prevent root desiccation.
      */
     fun checkAndTriggerWateringReminders() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             if (!_careRemindersEnabled.value) return@launch
             val plantsList = repository.getAllPlantsOnce()
             val logsList = repository.getAllCareLogsOnce()
+            val lastWaterByPlant = HashMap<Long, Long>((plantsList.size * 2).coerceAtLeast(8))
+            for (log in logsList) {
+                if (log.actionType == CareActionType.WATER || log.actionType == CareActionType.FERTILIZE) {
+                    val prev = lastWaterByPlant[log.plantId]
+                    if (prev == null || log.timestamp > prev) {
+                        lastWaterByPlant[log.plantId] = log.timestamp
+                    }
+                }
+            }
             val now = System.currentTimeMillis()
             val twoDaysMillis = 48 * 3600 * 1000L
 
             for (plant in plantsList) {
-                val plantWaterLogs = logsList.filter { 
-                    it.plantId == plant.id && (it.actionType == CareActionType.WATER || it.actionType == CareActionType.FERTILIZE)
-                }
-                val lastWaterTime = plantWaterLogs.maxOfOrNull { it.timestamp } ?: plant.plantedDate
+                val lastWaterTime = lastWaterByPlant[plant.id] ?: plant.plantedDate
                 if (now - lastWaterTime >= twoDaysMillis) {
                     NotificationHelper.sendWateringReminder(
                         context = getApplication(),
@@ -680,9 +720,10 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
      * Instantly refreshes the timer state against the system clock upon resuming the app.
      */
     fun refreshTimerState() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val plants = repository.getAllPlantsOnce()
-            val activeRunning = plants.firstOrNull { it.id == _selectedPlantId.value && it.isTimerRunning && !it.isPausedForMaintenance }
+            val selectedId = _selectedPlantId.value
+            val activeRunning = plants.firstOrNull { it.id == selectedId && it.isTimerRunning && !it.isPausedForMaintenance }
                 ?: plants.firstOrNull { it.isTimerRunning && !it.isPausedForMaintenance }
             if (activeRunning != null && _liveTimerChipEnabled.value) {
                 val status = LightCycleEngine.calculateStatus(activeRunning)
@@ -717,10 +758,10 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun triggerBackupNow(onResult: (Boolean, String?) -> Unit) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val uriStr = _backupFolderUri.value
             if (uriStr.isNullOrBlank()) {
-                onResult(false, null)
+                withContext(Dispatchers.Main) { onResult(false, null) }
                 return@launch
             }
             val treeUri = Uri.parse(uriStr)
@@ -730,47 +771,56 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
                 _lastBackupTimestamp.value = now
                 prefs.edit().putLong("key_last_backup_timestamp", now).apply()
             }
-            onResult(success, fileName)
+            withContext(Dispatchers.Main) {
+                onResult(success, fileName)
+            }
         }
     }
 
-    private fun checkAndTriggerAutomatedWeeklyBackup() {
+    private suspend fun checkAndTriggerAutomatedWeeklyBackup() {
         if (!_weeklyBackupEnabled.value) return
         val uriStr = _backupFolderUri.value ?: return
         val lastTime = _lastBackupTimestamp.value
         val sevenDaysMillis = 7 * 24 * 3600 * 1000L
         if (System.currentTimeMillis() - lastTime >= sevenDaysMillis) {
-            viewModelScope.launch {
-                val treeUri = Uri.parse(uriStr)
-                val (success, _) = PlantBackupManager.exportToFolderUri(getApplication(), treeUri, repository)
-                if (success) {
-                    val now = System.currentTimeMillis()
-                    _lastBackupTimestamp.value = now
-                    prefs.edit().putLong("key_last_backup_timestamp", now).apply()
-                }
+            val treeUri = Uri.parse(uriStr)
+            val (success, _) = PlantBackupManager.exportToFolderUri(getApplication(), treeUri, repository)
+            if (success) {
+                val now = System.currentTimeMillis()
+                _lastBackupTimestamp.value = now
+                prefs.edit().putLong("key_last_backup_timestamp", now).apply()
             }
         }
+    }
+
+    private val calendarThreadLocal = object : ThreadLocal<java.util.Calendar>() {
+        override fun initialValue(): java.util.Calendar = java.util.Calendar.getInstance()
     }
 
     /**
      * Computes the 1-indexed biological calendar day for a cultivar from its planted timestamp.
      */
     fun calculateCalendarDay(plantedDate: Long, targetDate: Long = System.currentTimeMillis()): Int {
-        val calStart = java.util.Calendar.getInstance().apply {
-            timeInMillis = plantedDate
-            set(java.util.Calendar.HOUR_OF_DAY, 0)
-            set(java.util.Calendar.MINUTE, 0)
-            set(java.util.Calendar.SECOND, 0)
-            set(java.util.Calendar.MILLISECOND, 0)
+        val cal = calendarThreadLocal.get() ?: java.util.Calendar.getInstance()
+        val tz = java.util.TimeZone.getDefault()
+        if (cal.timeZone != tz) {
+            cal.timeZone = tz
         }
-        val calEnd = java.util.Calendar.getInstance().apply {
-            timeInMillis = targetDate
-            set(java.util.Calendar.HOUR_OF_DAY, 0)
-            set(java.util.Calendar.MINUTE, 0)
-            set(java.util.Calendar.SECOND, 0)
-            set(java.util.Calendar.MILLISECOND, 0)
-        }
-        val diffMillis = calEnd.timeInMillis - calStart.timeInMillis
+        cal.timeInMillis = plantedDate
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        val startMillis = cal.timeInMillis
+
+        cal.timeInMillis = targetDate
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        val endMillis = cal.timeInMillis
+
+        val diffMillis = endMillis - startMillis
         val days = (diffMillis / (1000 * 60 * 60 * 24)).toInt()
         return (days.coerceAtLeast(0) + 1)
     }
@@ -779,9 +829,11 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
      * Exports SQLite database tables to a user-selected file URI in JSON or CSV format.
      */
     fun exportDatabaseToUri(uri: Uri, isJson: Boolean, onResult: (Boolean) -> Unit) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val success = PlantBackupManager.exportToFileUri(getApplication(), uri, isJson, repository)
-            onResult(success)
+            withContext(Dispatchers.Main) {
+                onResult(success)
+            }
         }
     }
 
@@ -825,7 +877,7 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         data: PlantBackupManager.ImportPreviewData,
         onResult: (Boolean, String) -> Unit
     ) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             // Unpack ZIP archive or insert parsed entities into Room tables
             val success = if (data.sourceFormat == "ZIP Bundle" && data.sourceUri != null) {
                 PlantBackupManager.restoreDatabaseFromZip(getApplication(), repository, data, data.sourceUri)
@@ -833,23 +885,27 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
                 PlantBackupManager.restoreDatabaseFromData(getApplication(), repository, data)
             }
             if (success) {
-                // Refresh local state: select the first restored cultivar and reset timeline filter
                 val freshPlants = repository.getAllPlantsOnce()
-                freshPlants.firstOrNull()?.let { selectPlant(it.id) }
+                val firstId = freshPlants.firstOrNull()?.id
                 _timelineShowOnlyToday.value = false
                 prefs.edit().putBoolean("key_timeline_show_only_today", false).apply()
-
-                // Re-arm local Android alarms for watering and light cycles
-                NotificationHelper.scheduleDailyCareAlerts(getApplication())
 
                 val photoDetail = if (data.bundledImagesCount > 0) {
                     "${data.bundledImagesCount} full-resolution photos"
                 } else {
                     "${data.photos.size} vault photos"
                 }
-                onResult(true, "Successfully restored ${data.plants.size} cultivars, ${data.logs.size} care logs, and $photoDetail.")
+
+                withContext(Dispatchers.Main) {
+                    firstId?.let { selectPlant(it) }
+                    // Re-arm local Android alarms for watering and light cycles
+                    NotificationHelper.scheduleDailyCareAlerts(getApplication())
+                    onResult(true, "Successfully restored ${data.plants.size} cultivars, ${data.logs.size} care logs, and $photoDetail.")
+                }
             } else {
-                onResult(false, "Failed to restore database from backup file.")
+                withContext(Dispatchers.Main) {
+                    onResult(false, "Failed to restore database from backup file.")
+                }
             }
         }
     }
@@ -918,11 +974,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
      * Clears all existing user records and writes an initial offline backup snapshot.
      */
     fun resetDatabaseWithSampleData() {
-        viewModelScope.launch {
-            val plants = repository.getAllPlantsOnce()
-            plants.forEach { repository.deletePlant(it) }
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.clearAllData()
             SeedData.populateIfEmpty(repository)
-            delay(100)
             val freshPlants = repository.getAllPlantsOnce()
             val freshLogs = repository.getAllCareLogsOnce()
             val freshPhotos = repository.getAllPhotosOnce()

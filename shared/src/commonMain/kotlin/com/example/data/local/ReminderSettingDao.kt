@@ -23,6 +23,9 @@ interface ReminderSettingDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertReminder(reminder: ReminderSetting): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReminders(reminders: List<ReminderSetting>)
+
     @Update
     suspend fun updateReminder(reminder: ReminderSetting)
 

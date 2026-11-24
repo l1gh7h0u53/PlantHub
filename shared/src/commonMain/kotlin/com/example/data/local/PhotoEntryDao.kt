@@ -35,6 +35,9 @@ interface PhotoEntryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPhoto(photo: PhotoEntry): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPhotos(photos: List<PhotoEntry>)
+
     @Update
     suspend fun updatePhoto(photo: PhotoEntry)
 

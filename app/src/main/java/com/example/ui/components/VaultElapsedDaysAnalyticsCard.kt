@@ -57,6 +57,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -70,6 +71,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.R
 import com.example.data.model.PhotoEntry
 import com.example.ui.theme.LocalAccessibilitySuite
@@ -93,6 +95,24 @@ data class TimelineChartPoint(
     val dayLabel: String
 )
 
+private val chartPointDateFormatThreadLocal = object : ThreadLocal<Pair<Locale, SimpleDateFormat>>() {
+    override fun initialValue(): Pair<Locale, SimpleDateFormat> {
+        val locale = Locale.getDefault()
+        return locale to SimpleDateFormat("MMM d, yyyy", locale)
+    }
+}
+
+private fun chartPointDateFormatter(): SimpleDateFormat {
+    val currentLocale = Locale.getDefault()
+    val cached = chartPointDateFormatThreadLocal.get()
+    if (cached != null && cached.first == currentLocale) {
+        return cached.second
+    }
+    val created = SimpleDateFormat("MMM d, yyyy", currentLocale)
+    chartPointDateFormatThreadLocal.set(currentLocale to created)
+    return created
+}
+
 /**
  * Calculates elapsed days progression from the first baseline photo.
  */
@@ -102,7 +122,7 @@ fun calculateTimelineChartPoints(photos: List<PhotoEntry>): List<TimelineChartPo
     val sorted = photos.sortedWith(compareBy({ it.dayNumber }, { it.timestamp }))
     val firstPhoto = sorted.first()
     val firstTimestamp = firstPhoto.timestamp
-    val dateFormat = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+    val dateFormat = chartPointDateFormatter()
 
     return sorted.mapIndexed { index, photo ->
         val rawDiffDays = (photo.timestamp - firstTimestamp).toDouble() / (1000.0 * 60 * 60 * 24)
@@ -324,8 +344,17 @@ fun VaultElapsedDaysAnalyticsCard(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
+                                val context = LocalContext.current
+                                val thumbRequest = remember(single.photo.imageUri) {
+                                    val source: Any = single.photo.imageUri.let { if (it.startsWith("/")) File(it) else it }
+                                    ImageRequest.Builder(context)
+                                        .data(source)
+                                        .size(256)
+                                        .crossfade(true)
+                                        .build()
+                                }
                                 AsyncImage(
-                                    model = single.photo.imageUri.let { if (it.startsWith("/")) File(it) else it },
+                                    model = thumbRequest,
                                     placeholder = painterResource(R.drawable.planthub_icon_1791667356162),
                                     error = painterResource(R.drawable.planthub_icon_1791667356162),
                                     contentDescription = null,
@@ -522,6 +551,12 @@ private fun InteractiveElapsedDaysChart(
     }
 
     val milestoneTotal = remember(points) { points.count { it.isMilestone } }
+    val curvePath = remember { Path() }
+    val fillPath = remember { Path() }
+    val diamondOuter = remember { Path() }
+    val diamondHalo = remember { Path() }
+    val diamondCore = remember { Path() }
+    val dashedEffect = remember { PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f) }
 
     // Canvas drawing with touch listener
     Canvas(
@@ -565,7 +600,6 @@ private fun InteractiveElapsedDaysChart(
 
         // 1. Draw horizontal grid lines and Y-axis elapsed day values
         val gridSteps = 4
-        val dashedEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f)
 
         for (i in 0..gridSteps) {
             val ratio = i.toFloat() / gridSteps.toFloat()
@@ -601,16 +635,18 @@ private fun InteractiveElapsedDaysChart(
         val stepX = chartWidth / (points.size - 1)
 
         // Compute plotted coordinates (x, y) for all points
-        val pointCoords = points.mapIndexed { index, pt ->
+        val pointCoords = ArrayList<Offset>(points.size)
+        for (index in points.indices) {
+            val pt = points[index]
             val px = paddingLeft + (index * stepX)
             val normalizedY = (pt.elapsedDays / maxDays).coerceIn(0f, 1f)
             val py = chartHeight + paddingTop - (normalizedY * chartHeight)
-            Offset(px, py)
+            pointCoords.add(Offset(px, py))
         }
 
-        // 2. Build smooth cubic Bézier spline
-        val curvePath = Path()
-        val fillPath = Path()
+        // 2. Build smooth cubic Bézier spline reusing remembered Path buffers
+        curvePath.reset()
+        fillPath.reset()
 
         curvePath.moveTo(pointCoords.first().x, pointCoords.first().y)
         fillPath.moveTo(pointCoords.first().x, chartHeight + paddingTop)
@@ -686,13 +722,12 @@ private fun InteractiveElapsedDaysChart(
                 )
                 if (pt.isMilestone && a11y.useNonColorPatterns) {
                     val rOuter = 8.dp.toPx()
-                    val diamondOuter = Path().apply {
-                        moveTo(coord.x, coord.y - rOuter)
-                        lineTo(coord.x + rOuter, coord.y)
-                        lineTo(coord.x, coord.y + rOuter)
-                        lineTo(coord.x - rOuter, coord.y)
-                        close()
-                    }
+                    diamondOuter.reset()
+                    diamondOuter.moveTo(coord.x, coord.y - rOuter)
+                    diamondOuter.lineTo(coord.x + rOuter, coord.y)
+                    diamondOuter.lineTo(coord.x, coord.y + rOuter)
+                    diamondOuter.lineTo(coord.x - rOuter, coord.y)
+                    diamondOuter.close()
                     drawPath(path = diamondOuter, color = milestoneNodeColor)
                     drawCircle(color = surfaceColor, radius = 3.dp.toPx(), center = coord)
                 } else {
@@ -712,20 +747,20 @@ private fun InteractiveElapsedDaysChart(
                     // Distinct diamond silhouette differentiates milestones without relying on color alone
                     val rHalo = 8.dp.toPx()
                     val rCore = 5.5.dp.toPx()
-                    val diamondHalo = Path().apply {
-                        moveTo(coord.x, coord.y - rHalo)
-                        lineTo(coord.x + rHalo, coord.y)
-                        lineTo(coord.x, coord.y + rHalo)
-                        lineTo(coord.x - rHalo, coord.y)
-                        close()
-                    }
-                    val diamondCore = Path().apply {
-                        moveTo(coord.x, coord.y - rCore)
-                        lineTo(coord.x + rCore, coord.y)
-                        lineTo(coord.x, coord.y + rCore)
-                        lineTo(coord.x - rCore, coord.y)
-                        close()
-                    }
+                    diamondHalo.reset()
+                    diamondHalo.moveTo(coord.x, coord.y - rHalo)
+                    diamondHalo.lineTo(coord.x + rHalo, coord.y)
+                    diamondHalo.lineTo(coord.x, coord.y + rHalo)
+                    diamondHalo.lineTo(coord.x - rHalo, coord.y)
+                    diamondHalo.close()
+
+                    diamondCore.reset()
+                    diamondCore.moveTo(coord.x, coord.y - rCore)
+                    diamondCore.lineTo(coord.x + rCore, coord.y)
+                    diamondCore.lineTo(coord.x, coord.y + rCore)
+                    diamondCore.lineTo(coord.x - rCore, coord.y)
+                    diamondCore.close()
+
                     drawPath(path = diamondHalo, color = milestoneNodeColor.copy(alpha = 0.35f))
                     drawPath(path = diamondCore, color = milestoneNodeColor)
                     drawPath(
@@ -817,8 +852,17 @@ private fun SelectedPointPreviewCard(
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surface)
             ) {
+                val previewContext = LocalContext.current
+                val previewRequest = remember(point.photo.imageUri) {
+                    val source: Any = point.photo.imageUri.let { if (it.startsWith("/")) File(it) else it }
+                    ImageRequest.Builder(previewContext)
+                        .data(source)
+                        .size(256)
+                        .crossfade(true)
+                        .build()
+                }
                 AsyncImage(
-                    model = point.photo.imageUri.let { if (it.startsWith("/")) File(it) else it },
+                    model = previewRequest,
                     placeholder = painterResource(R.drawable.planthub_icon_1791667356162),
                     error = painterResource(R.drawable.planthub_icon_1791667356162),
                     contentDescription = "Photo thumbnail for ${point.dayLabel}",

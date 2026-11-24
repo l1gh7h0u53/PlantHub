@@ -19,28 +19,31 @@ actual fun currentTimeMillis(): Long {
     return (NSDate().timeIntervalSince1970 * 1000.0).toLong()
 }
 
+private val iosTime12hFormatter = NSDateFormatter().apply {
+    locale = NSLocale("en_US_POSIX")
+    dateFormat = "h:mm a"
+}
+
+private val iosDateKeyFormatter = NSDateFormatter().apply {
+    locale = NSLocale("en_US_POSIX")
+    dateFormat = "yyyy-MM-dd"
+}
+
+private val iosDisplayDateFormatter = NSDateFormatter().apply {
+    locale = NSLocale("en_US_POSIX")
+    dateFormat = "EEE, MMM d, yyyy"
+}
+
 actual fun formatTime12h(epochMillis: Long): String {
-    val formatter = NSDateFormatter().apply {
-        locale = NSLocale("en_US_POSIX")
-        dateFormat = "h:mm a"
-    }
-    return formatter.stringFromDate(NSDate.dateWithTimeIntervalSince1970(epochMillis / 1000.0))
+    return iosTime12hFormatter.stringFromDate(NSDate.dateWithTimeIntervalSince1970(epochMillis / 1000.0))
 }
 
 actual fun formatDateKey(epochMillis: Long): String {
-    val formatter = NSDateFormatter().apply {
-        locale = NSLocale("en_US_POSIX")
-        dateFormat = "yyyy-MM-dd"
-    }
-    return formatter.stringFromDate(NSDate.dateWithTimeIntervalSince1970(epochMillis / 1000.0))
+    return iosDateKeyFormatter.stringFromDate(NSDate.dateWithTimeIntervalSince1970(epochMillis / 1000.0))
 }
 
 actual fun formatDisplayDate(epochMillis: Long): String {
-    val formatter = NSDateFormatter().apply {
-        locale = NSLocale("en_US_POSIX")
-        dateFormat = "EEE, MMM d, yyyy"
-    }
-    return formatter.stringFromDate(NSDate.dateWithTimeIntervalSince1970(epochMillis / 1000.0))
+    return iosDisplayDateFormatter.stringFromDate(NSDate.dateWithTimeIntervalSince1970(epochMillis / 1000.0))
 }
 
 actual fun calculateHeatmapGridBounds(weeksCount: Int): HeatmapCalendarBounds {

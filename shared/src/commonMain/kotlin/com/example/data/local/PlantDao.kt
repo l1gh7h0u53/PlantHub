@@ -42,6 +42,9 @@ interface PlantDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPlant(plant: Plant): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPlants(plants: List<Plant>): List<Long>
+
     @Update
     suspend fun updatePlant(plant: Plant)
 

@@ -134,7 +134,7 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
         // App Header Banner
-        item {
+        item(key = "home_header", contentType = "home_header") {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -179,7 +179,7 @@ fun HomeScreen(
         }
 
         // Fleet Heatmap Matrix (Collapsible Accordion: Collapsed by default so screen is calm and clean)
-        item {
+        item(key = "fleet_heatmap", contentType = "fleet_heatmap") {
             GithubHeatmapGrid(
                 gridData = fleetHeatmap,
                 currentViewMode = viewMode,
@@ -191,7 +191,7 @@ fun HomeScreen(
         }
 
         // Section Title: Active Plants
-        item {
+        item(key = "active_plants_title", contentType = "section_title") {
             Text(
                 text = "Active Plants (${plants.size})",
                 style = MaterialTheme.typography.titleMedium,
@@ -203,7 +203,7 @@ fun HomeScreen(
 
         // Plant Cards List
         if (plants.isEmpty()) {
-            item {
+            item(key = "empty_garden", contentType = "empty_garden") {
                 Surface(
                     shape = RoundedCornerShape(24.dp),
                     color = MaterialTheme.colorScheme.surface,
@@ -261,7 +261,11 @@ fun HomeScreen(
                 }
             }
         } else {
-            items(plants, key = { it.id }) { plant ->
+            items(
+                items = plants,
+                key = { it.id },
+                contentType = { "plant_card" }
+            ) { plant ->
                 SpaciousPlantCard(
                     plant = plant,
                     onOpenTracker = { onSelectPlant(plant) },
@@ -370,7 +374,9 @@ private fun SpaciousPlantCard(
     onResumeMaintenance: () -> Unit
 ) {
     val lightStatus = remember(plant) { LightCycleEngine.calculateStatus(plant) }
-    val daysInGrow = ((System.currentTimeMillis() - plant.plantedDate) / (1000 * 60 * 60 * 24)).coerceAtLeast(0) + 1
+    val daysInGrow = remember(plant.id, plant.plantedDate) {
+        ((System.currentTimeMillis() - plant.plantedDate) / (1000 * 60 * 60 * 24)).coerceAtLeast(0) + 1
+    }
 
     val isWaiting = lightStatus.isWaitingToStart
     val isRunning = lightStatus.isTimerRunning

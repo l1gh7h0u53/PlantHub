@@ -32,6 +32,8 @@ class LightCycleTickerService : Service() {
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
     private var isTicking = false
+    @Volatile
+    private var latestPlants: List<com.example.data.model.Plant> = emptyList()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -72,64 +74,75 @@ class LightCycleTickerService : Service() {
         serviceScope.launch {
             val db = AppDatabase.getDatabase(applicationContext)
             val plantDao = db.plantDao()
-            val prefs = applicationContext.getSharedPreferences("app_settings_prefs", Context.MODE_PRIVATE)
+            val prefs = applicationContext.getSharedPreferences("planthub_prefs", Context.MODE_PRIVATE)
+
+            latestPlants = plantDao.getAllPlantsOnce()
+            val collectorJob = launch {
+                plantDao.getAllPlants().collect { updatedList ->
+                    latestPlants = updatedList
+                }
+            }
 
             var lastNotifiedSecond = -1L
             var lastNotifiedPhase = ""
 
-            while (isActive) {
-                try {
-                    val isLiveEnabled = prefs.getBoolean("key_live_timer_chip_enabled", true)
-                    val allPlants = plantDao.getAllPlantsOnce()
-                    val activePlant = if (initialPlantId > 0) {
-                        allPlants.firstOrNull { it.id == initialPlantId && it.isTimerRunning && !it.isPausedForMaintenance }
-                            ?: allPlants.firstOrNull { it.isTimerRunning && !it.isPausedForMaintenance }
-                    } else {
-                        allPlants.firstOrNull { it.isTimerRunning && !it.isPausedForMaintenance }
-                    }
+            try {
+                while (isActive) {
+                    try {
+                        val isLiveEnabled = prefs.getBoolean("key_live_timer_chip_enabled", true)
+                        val allPlants = latestPlants
+                        val activePlant = if (initialPlantId > 0) {
+                            allPlants.firstOrNull { it.id == initialPlantId && it.isTimerRunning && !it.isPausedForMaintenance }
+                                ?: allPlants.firstOrNull { it.isTimerRunning && !it.isPausedForMaintenance }
+                        } else {
+                            allPlants.firstOrNull { it.isTimerRunning && !it.isPausedForMaintenance }
+                        }
 
-                    if (activePlant == null || !isLiveEnabled) {
-                        Log.d(TAG, "No running plant or chip disabled; stopping ticker service")
-                        break
-                    }
+                        if (activePlant == null || !isLiveEnabled) {
+                            Log.d(TAG, "No running plant or chip disabled; stopping ticker service")
+                            break
+                        }
 
-                    val status = LightCycleEngine.calculateStatus(activePlant)
+                        val status = LightCycleEngine.calculateStatus(activePlant)
 
-                    // Automatic phase auto-pause check
-                    if (status.isPausedForMaintenance && !activePlant.isPausedForMaintenance) {
-                        plantDao.updatePlant(
-                            activePlant.copy(
-                                isPausedForMaintenance = true,
-                                isTimerRunning = false
+                        // Automatic phase auto-pause check
+                        if (status.isPausedForMaintenance && !activePlant.isPausedForMaintenance) {
+                            plantDao.updatePlant(
+                                activePlant.copy(
+                                    isPausedForMaintenance = true,
+                                    isTimerRunning = false
+                                )
                             )
-                        )
-                        NotificationHelper.sendLightsOffAlert(
-                            context = applicationContext,
-                            notificationId = activePlant.id.toInt() + 1000,
-                            plantName = activePlant.name
-                        )
-                        break
+                            NotificationHelper.sendLightsOffAlert(
+                                context = applicationContext,
+                                notificationId = activePlant.id.toInt() + 1000,
+                                plantName = activePlant.name
+                            )
+                            break
+                        }
+
+                        val currentSec = status.secondsRemainingInPhase
+                        val currentPhase = status.currentPhaseName
+
+                        // Update live notification when second ticks or phase transitions
+                        if (currentSec != lastNotifiedSecond || currentPhase != lastNotifiedPhase) {
+                            NotificationHelper.updateLightCycleLiveUpdate(
+                                context = applicationContext,
+                                status = status,
+                                plantName = activePlant.name,
+                                plantId = activePlant.id
+                            )
+                            lastNotifiedSecond = currentSec
+                            lastNotifiedPhase = currentPhase
+                        }
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "Error in LightCycleTickerService loop", e)
                     }
 
-                    val currentSec = status.secondsRemainingInPhase
-                    val currentPhase = status.currentPhaseName
-
-                    // Update live notification when second ticks or phase transitions
-                    if (currentSec != lastNotifiedSecond || currentPhase != lastNotifiedPhase) {
-                        NotificationHelper.updateLightCycleLiveUpdate(
-                            context = applicationContext,
-                            status = status,
-                            plantName = activePlant.name,
-                            plantId = activePlant.id
-                        )
-                        lastNotifiedSecond = currentSec
-                        lastNotifiedPhase = currentPhase
-                    }
-                } catch (e: Throwable) {
-                    Log.e(TAG, "Error in LightCycleTickerService loop", e)
+                    delay(1000L)
                 }
-
-                delay(1000L)
+            } finally {
+                collectorJob.cancel()
             }
 
             stopSelf()

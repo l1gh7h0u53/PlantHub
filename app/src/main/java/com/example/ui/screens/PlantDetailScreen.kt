@@ -84,7 +84,6 @@ fun PlantDetailScreen(
     selectedPlant: Plant?,
     modifier: Modifier = Modifier
 ) {
-    val lightStatus by viewModel.currentLightStatus.collectAsStateWithLifecycle()
     val plantLogs by viewModel.selectedPlantLogs.collectAsStateWithLifecycle()
     val heatmapData by viewModel.selectedPlantHeatmapData.collectAsStateWithLifecycle()
     val viewMode by viewModel.heatmapViewMode.collectAsStateWithLifecycle()
@@ -138,7 +137,9 @@ fun PlantDetailScreen(
         return
     }
 
-    val daysInGrow = ((System.currentTimeMillis() - selectedPlant.plantedDate) / (1000 * 60 * 60 * 24)).coerceAtLeast(0) + 1
+    val daysInGrow = remember(selectedPlant.id, selectedPlant.plantedDate) {
+        ((System.currentTimeMillis() - selectedPlant.plantedDate) / (1000 * 60 * 60 * 24)).coerceAtLeast(0) + 1
+    }
 
     LazyColumn(
         modifier = modifier
@@ -149,7 +150,7 @@ fun PlantDetailScreen(
     ) {
         // Plant Selector Filter Chips (M3 Expressive)
         if (plants.size > 1) {
-            item {
+            item(key = "plant_selector", contentType = "plant_selector") {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -180,7 +181,7 @@ fun PlantDetailScreen(
         }
 
         // Header Card & Controls
-        item {
+        item(key = "plant_header_${selectedPlant.id}", contentType = "plant_header") {
             Surface(
                 shape = RoundedCornerShape(28.dp),
                 color = MaterialTheme.colorScheme.surface,
@@ -308,18 +309,16 @@ fun PlantDetailScreen(
             }
         }
 
-        // Real-Time System Clock Photoperiod HUD (Expressive Hero)
-        item {
-            LightCycleGauge(
-                status = lightStatus,
-                onStartTimer = { viewModel.startLightTimer(selectedPlant.id) },
-                onPauseTimer = { viewModel.pauseLightTimer(selectedPlant.id) },
-                onResetTimer = { viewModel.resetLightTimer(selectedPlant.id) }
+        // Real-Time System Clock Photoperiod HUD (isolated into its own scope so 1s ticks never recompose the rest of PlantDetailScreen)
+        item(key = "light_gauge_${selectedPlant.id}", contentType = "light_gauge") {
+            LivePhotoperiodSection(
+                viewModel = viewModel,
+                plantId = selectedPlant.id
             )
         }
 
         // Quick Care Action Bar & Modal Sheet trigger
-        item {
+        item(key = "quick_care_${selectedPlant.id}", contentType = "quick_care") {
             Column {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -348,7 +347,7 @@ fun PlantDetailScreen(
         }
 
         // Plant-Specific GitHub Heatmap
-        item {
+        item(key = "heatmap_${selectedPlant.id}", contentType = "heatmap") {
             GithubHeatmapGrid(
                 gridData = heatmapData,
                 currentViewMode = viewMode,
@@ -359,7 +358,7 @@ fun PlantDetailScreen(
         }
 
         // Care Timeline Header
-        item {
+        item(key = "care_timeline_header", contentType = "timeline_header") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -401,7 +400,7 @@ fun PlantDetailScreen(
 
         // Care Logs List
         if (displayedLogs.isEmpty()) {
-            item {
+            item(key = "care_timeline_empty", contentType = "empty_state") {
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     color = MaterialTheme.colorScheme.surface,
@@ -431,7 +430,11 @@ fun PlantDetailScreen(
                 }
             }
         } else {
-            items(displayedLogs, key = { it.id }) { log ->
+            items(
+                items = displayedLogs,
+                key = { it.id },
+                contentType = { "care_log_item" }
+            ) { log ->
                 ExpressiveCareTimelineItem(log = log)
             }
         }
@@ -550,9 +553,29 @@ private fun SpecPill(label: String, value: String) {
 }
 
 @Composable
+private fun LivePhotoperiodSection(
+    viewModel: PlantViewModel,
+    plantId: Long
+) {
+    val lightStatus by viewModel.currentLightStatus.collectAsStateWithLifecycle()
+    LightCycleGauge(
+        status = lightStatus,
+        onStartTimer = { viewModel.startLightTimer(plantId) },
+        onPauseTimer = { viewModel.pauseLightTimer(plantId) },
+        onResetTimer = { viewModel.resetLightTimer(plantId) }
+    )
+}
+
+private val careTimelineDateFormat = object : ThreadLocal<SimpleDateFormat>() {
+    override fun initialValue(): SimpleDateFormat = SimpleDateFormat("MMM d, h:mm a", Locale.US)
+}
+
+@Composable
 private fun ExpressiveCareTimelineItem(log: CareLog) {
-    val dateFormat = remember { SimpleDateFormat("MMM d, h:mm a", Locale.US) }
-    val formattedDate = remember(log.timestamp) { dateFormat.format(Date(log.timestamp)) }
+    val formattedDate = remember(log.timestamp) {
+        val fmt = careTimelineDateFormat.get() ?: SimpleDateFormat("MMM d, h:mm a", Locale.US)
+        fmt.format(Date(log.timestamp))
+    }
     val a11y = LocalAccessibilitySuite.current
 
     val (icon, iconTint, iconBg) = when (log.actionType) {

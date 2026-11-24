@@ -83,7 +83,9 @@ import com.example.ui.components.VaultElapsedDaysAnalyticsCard
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -103,13 +105,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.data.model.GrowthStage
 import com.example.data.model.PhotoEntry
 import com.example.data.model.Plant
 import com.example.ui.theme.LocalAccessibilitySuite
 import com.example.ui.viewmodel.PlantViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -124,6 +128,7 @@ fun PhotoVaultScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val a11y = LocalAccessibilitySuite.current
     val photos by viewModel.selectedPlantPhotos.collectAsStateWithLifecycle()
     val isAnalyticsExpanded by viewModel.vaultAnalyticsExpanded.collectAsStateWithLifecycle()
@@ -214,15 +219,17 @@ fun PhotoVaultScreen(
         (allPhotosSorted.size - milestonePhotos.size).coerceAtLeast(0)
     }
 
-    // Photo picker launcher (importing existing photos to private storage)
+    // Photo picker launcher (importing existing photos to private storage off the main thread)
     var selectedImageUriString by remember { mutableStateOf<String?>(null) }
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null) {
-            val savedPath = saveImageLocally(context, uri)
-            selectedImageUriString = savedPath
-            showCaptureModal = true
+            coroutineScope.launch {
+                val savedPath = withContext(Dispatchers.IO) { saveImageLocally(context, uri) }
+                selectedImageUriString = savedPath
+                showCaptureModal = true
+            }
         }
     }
 
@@ -266,7 +273,7 @@ fun PhotoVaultScreen(
         ) {
         // Plant Selector Filter Chips (M3 Expressive)
         if (plants.size > 1) {
-            item {
+            item(key = "vault_plant_selector", contentType = "plant_selector") {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -297,7 +304,7 @@ fun PhotoVaultScreen(
         }
 
         // Vault Header Card (M3 Expressive Hero Card)
-        item {
+        item(key = "vault_header_${selectedPlant.id}", contentType = "vault_header") {
             Surface(
                 shape = RoundedCornerShape(24.dp),
                 color = MaterialTheme.colorScheme.surface,
@@ -403,7 +410,7 @@ fun PhotoVaultScreen(
         }
 
         // Expandable Growth Timeline Analytics Card (Interactive Elapsed Days Curve & Node Tooltips)
-        item {
+        item(key = "vault_analytics_${selectedPlant.id}", contentType = "vault_analytics") {
             VaultElapsedDaysAnalyticsCard(
                 photos = allPhotosSorted,
                 onPhotoClick = { lightboxPhoto = it },
@@ -413,7 +420,7 @@ fun PhotoVaultScreen(
         }
 
         // 7-Day Weekly Progression Unlock & Interactive Compare Hub
-        item {
+        item(key = "vault_weekly_review_${selectedPlant.id}", contentType = "vault_weekly_review") {
             InteractiveWeeklyReviewModule(
                 photos = milestonePhotos,
                 onPhotoClick = { lightboxPhoto = it }
@@ -421,7 +428,7 @@ fun PhotoVaultScreen(
         }
 
         // Section Title: Chronological Milestone Timeline
-        item {
+        item(key = "vault_timeline_header", contentType = "vault_timeline_header") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -523,7 +530,7 @@ fun PhotoVaultScreen(
         }
 
         if (milestonePhotos.isEmpty()) {
-            item {
+            item(key = "vault_empty", contentType = "vault_empty") {
                 Surface(
                     shape = RoundedCornerShape(24.dp),
                     color = MaterialTheme.colorScheme.surface,
@@ -565,7 +572,11 @@ fun PhotoVaultScreen(
                 }
             }
         } else {
-            items(milestonePhotos, key = { it.id }) { photo ->
+            items(
+                items = milestonePhotos,
+                key = { it.id },
+                contentType = { "milestone_photo_card" }
+            ) { photo ->
                 ExpressiveMilestoneCard(
                     entry = photo,
                     onPhotoClick = { lightboxPhoto = photo },
@@ -812,6 +823,7 @@ fun PhotoVaultScreen(
                     VaultPhotoMedia(
                         photo = photo,
                         contentScale = ContentScale.Fit,
+                        targetSizePx = 1600,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(320.dp)
@@ -947,14 +959,16 @@ private fun InteractiveWeeklyReviewModule(
     photos: List<PhotoEntry>,
     onPhotoClick: (PhotoEntry) -> Unit
 ) {
-    val sorted = photos.sortedBy { it.dayNumber }
-    val eligiblePairs = mutableListOf<Pair<PhotoEntry, PhotoEntry>>()
-
-    for (i in 0 until sorted.size - 1) {
-        val p1 = sorted[i]
-        val p2 = sorted[i + 1]
-        if (p2.dayNumber - p1.dayNumber >= 6) {
-            eligiblePairs.add(Pair(p1, p2))
+    val eligiblePairs = remember(photos) {
+        val sorted = photos.sortedBy { it.dayNumber }
+        buildList {
+            for (i in 0 until sorted.size - 1) {
+                val p1 = sorted[i]
+                val p2 = sorted[i + 1]
+                if (p2.dayNumber - p1.dayNumber >= 6) {
+                    add(Pair(p1, p2))
+                }
+            }
         }
     }
 
@@ -1088,6 +1102,7 @@ private fun InteractiveWeeklyReviewModule(
                             VaultPhotoMedia(
                                 photo = latestPair.first,
                                 contentScale = ContentScale.Crop,
+                                targetSizePx = 600,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(1f)
@@ -1113,6 +1128,7 @@ private fun InteractiveWeeklyReviewModule(
                             VaultPhotoMedia(
                                 photo = latestPair.second,
                                 contentScale = ContentScale.Crop,
+                                targetSizePx = 600,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(1f)
@@ -1217,6 +1233,10 @@ private fun InteractiveWeeklyReviewModule(
     }
 }
 
+private val milestoneDateFormat = object : ThreadLocal<SimpleDateFormat>() {
+    override fun initialValue(): SimpleDateFormat = SimpleDateFormat("MMM d, yyyy", Locale.US)
+}
+
 @Composable
 private fun ExpressiveMilestoneCard(
     entry: PhotoEntry,
@@ -1224,8 +1244,10 @@ private fun ExpressiveMilestoneCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val dateFormat = remember { SimpleDateFormat("MMM d, yyyy", Locale.US) }
-    val dateString = remember(entry.timestamp) { dateFormat.format(Date(entry.timestamp)) }
+    val dateString = remember(entry.timestamp) {
+        val fmt = milestoneDateFormat.get() ?: SimpleDateFormat("MMM d, yyyy", Locale.US)
+        fmt.format(Date(entry.timestamp))
+    }
     val a11y = LocalAccessibilitySuite.current
 
     Surface(
@@ -1465,8 +1487,17 @@ private fun CapturePhotoDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 // Image Preview confirming attachment
+                val previewContext = LocalContext.current
+                val previewModel = remember(imageUri) {
+                    val source = if (imageUri.startsWith("/")) File(imageUri) else imageUri
+                    ImageRequest.Builder(previewContext)
+                        .data(source)
+                        .size(800)
+                        .crossfade(true)
+                        .build()
+                }
                 AsyncImage(
-                    model = if (imageUri.startsWith("/")) File(imageUri) else imageUri,
+                    model = previewModel,
                     contentDescription = "Selected photo",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
@@ -1858,36 +1889,53 @@ fun BotanicalMilestonePlaceholder(
 fun VaultPhotoMedia(
     photo: PhotoEntry,
     contentScale: ContentScale = ContentScale.Crop,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    targetSizePx: Int = 900
 ) {
     val context = LocalContext.current
-    val imageAvailable = remember(photo.imageUri) { isPhotoFileAvailable(context, photo.imageUri) }
-    val imageModel = remember(photo.imageUri) {
-        if (photo.imageUri.startsWith("/")) File(photo.imageUri) else photo.imageUri
+    val trimmedUri = remember(photo.imageUri) { photo.imageUri.trim() }
+    val instantState: Boolean? = remember(trimmedUri) {
+        when {
+            trimmedUri.isBlank() || trimmedUri.equals("null", ignoreCase = true) -> false
+            trimmedUri.startsWith("android.resource://") ||
+                trimmedUri.startsWith("http://") ||
+                trimmedUri.startsWith("https://") -> true
+            else -> null
+        }
+    }
+    val imageAvailable by produceState(initialValue = instantState, key1 = trimmedUri) {
+        if (instantState == null) {
+            value = withContext(Dispatchers.IO) { isPhotoFileAvailable(context, trimmedUri) }
+        } else {
+            value = instantState
+        }
+    }
+    var loadFailed by remember(trimmedUri) { mutableStateOf(false) }
+
+    val imageRequest = remember(trimmedUri, targetSizePx) {
+        val dataModel: Any = if (trimmedUri.startsWith("/")) File(trimmedUri) else trimmedUri
+        ImageRequest.Builder(context)
+            .data(dataModel)
+            .size(targetSizePx)
+            .crossfade(true)
+            .build()
     }
 
-    if (!imageAvailable) {
-        BotanicalMilestonePlaceholder(entry = photo, modifier = modifier)
-    } else {
-        SubcomposeAsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(imageModel)
-                .crossfade(true)
-                .build(),
-            contentDescription = photo.title,
-            contentScale = contentScale,
-            modifier = modifier,
-            loading = {
-                Box(
-                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                }
-            },
-            error = {
-                BotanicalMilestonePlaceholder(entry = photo, modifier = Modifier.fillMaxSize())
-            }
-        )
+    when {
+        imageAvailable == false || loadFailed -> {
+            BotanicalMilestonePlaceholder(entry = photo, modifier = modifier)
+        }
+        imageAvailable == null -> {
+            Box(modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant))
+        }
+        else -> {
+            AsyncImage(
+                model = imageRequest,
+                contentDescription = photo.title,
+                contentScale = contentScale,
+                onError = { loadFailed = true },
+                modifier = modifier
+            )
+        }
     }
 }

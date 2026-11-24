@@ -48,53 +48,61 @@ object HeatmapCalculator {
     }
 
     private fun calculateWeeksMatrix(logs: List<CareLog>, weeksCount: Int): HeatmapGridData {
-        val logsByDate = mutableMapOf<String, MutableList<CareLog>>()
-        for (log in logs) {
-            val key = formatDateKey(log.timestamp)
-            logsByDate.getOrPut(key) { mutableListOf() }.add(log)
-        }
-
         val bounds = calculateHeatmapGridBounds(weeksCount)
-        var runnerMillis = bounds.gridStartMillis
+        val gridStartMillis = bounds.gridStartMillis
         val todayEndMillis = bounds.todayEndMillis
 
-        val weeks = mutableListOf<List<HeatmapDay>>()
+        // Only bucket logs falling inside the rendered calendar window to skip needless formatting
+        val logsByDate = HashMap<String, MutableList<CareLog>>((weeksCount * 3).coerceAtLeast(16))
+        for (log in logs) {
+            val ts = log.timestamp
+            if (ts in gridStartMillis..todayEndMillis) {
+                val key = formatDateKey(ts)
+                logsByDate.getOrPut(key) { ArrayList(4) }.add(log)
+            }
+        }
+
+        var runnerMillis = gridStartMillis
+        val weeks = ArrayList<List<HeatmapDay>>(weeksCount)
         var totalContributions = 0
-        val dayActivityList = mutableListOf<Boolean>()
+        val dayActivity = BooleanArray(weeksCount * 7)
+        var dayActivityCount = 0
 
         for (w in 0 until weeksCount) {
-            val weekDays = mutableListOf<HeatmapDay>()
+            val weekDays = ArrayList<HeatmapDay>(7)
             for (d in 0 until 7) {
-                val key = formatDateKey(runnerMillis)
-                val dayLogs = logsByDate[key] ?: emptyList()
-                val count = dayLogs.size
-                totalContributions += count
-
-                val level = when {
-                    count == 0 -> 0
-                    count == 1 -> 1
-                    count == 2 -> 2
-                    count in 3..4 -> 3
-                    else -> 4
-                }
-
                 val isFuture = runnerMillis > todayEndMillis
-                val finalLevel = if (isFuture) 0 else level
-
-                val heatmapDay = HeatmapDay(
-                    dateKey = key,
-                    dateMillis = runnerMillis,
-                    displayDate = formatDisplayDate(runnerMillis),
-                    dayOfWeek = d,
-                    logCount = if (isFuture) 0 else count,
-                    level = finalLevel,
-                    careLogs = if (isFuture) emptyList() else dayLogs
-                )
-                weekDays.add(heatmapDay)
-
+                val key = formatDateKey(runnerMillis)
+                val dayLogs = if (isFuture) emptyList() else (logsByDate[key] ?: emptyList())
+                val count = dayLogs.size
                 if (!isFuture) {
-                    dayActivityList.add(count > 0)
+                    totalContributions += count
+                    dayActivity[dayActivityCount++] = count > 0
                 }
+
+                val finalLevel = if (isFuture) {
+                    0
+                } else {
+                    when {
+                        count == 0 -> 0
+                        count == 1 -> 1
+                        count == 2 -> 2
+                        count in 3..4 -> 3
+                        else -> 4
+                    }
+                }
+
+                weekDays.add(
+                    HeatmapDay(
+                        dateKey = key,
+                        dateMillis = runnerMillis,
+                        displayDate = formatDisplayDate(runnerMillis),
+                        dayOfWeek = d,
+                        logCount = count,
+                        level = finalLevel,
+                        careLogs = dayLogs
+                    )
+                )
 
                 runnerMillis = addDaysMillis(runnerMillis, 1)
             }
@@ -105,19 +113,19 @@ object HeatmapCalculator {
         var longestStreak = 0
         var tempStreak = 0
 
-        for (i in dayActivityList.indices.reversed()) {
-            if (dayActivityList[i]) {
+        for (i in (dayActivityCount - 1) downTo 0) {
+            if (dayActivity[i]) {
                 currentStreak++
             } else {
-                if (i == dayActivityList.lastIndex) {
+                if (i == dayActivityCount - 1) {
                     continue
                 }
                 break
             }
         }
 
-        for (active in dayActivityList) {
-            if (active) {
+        for (i in 0 until dayActivityCount) {
+            if (dayActivity[i]) {
                 tempStreak++
                 if (tempStreak > longestStreak) longestStreak = tempStreak
             } else {

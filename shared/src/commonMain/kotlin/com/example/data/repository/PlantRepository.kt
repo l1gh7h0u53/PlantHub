@@ -34,6 +34,7 @@ class PlantRepository(private val database: AppDatabase) {
     suspend fun getAllRemindersOnce(): List<ReminderSetting> = reminderSettingDao.getAllRemindersOnce()
 
     suspend fun insertPlant(plant: Plant): Long = plantDao.insertPlant(plant)
+    suspend fun insertPlants(plants: List<Plant>): List<Long> = plantDao.insertPlants(plants)
     suspend fun updatePlant(plant: Plant) = plantDao.updatePlant(plant)
     suspend fun deletePlant(plant: Plant) = plantDao.deletePlant(plant)
 
@@ -47,11 +48,13 @@ class PlantRepository(private val database: AppDatabase) {
     fun getPhotosForPlant(plantId: Long): Flow<List<PhotoEntry>> = photoEntryDao.getPhotosForPlant(plantId)
     suspend fun getPhotosForPlantOnce(plantId: Long): List<PhotoEntry> = photoEntryDao.getPhotosForPlantOnce(plantId)
     suspend fun insertPhotoEntry(entry: PhotoEntry): Long = photoEntryDao.insertPhoto(entry)
+    suspend fun insertPhotos(entries: List<PhotoEntry>) = photoEntryDao.insertPhotos(entries)
     suspend fun updatePhotoEntry(entry: PhotoEntry) = photoEntryDao.updatePhoto(entry)
     suspend fun deletePhotoEntry(entry: PhotoEntry) = photoEntryDao.deletePhoto(entry)
 
     fun getRemindersForPlant(plantId: Long): Flow<List<ReminderSetting>> = reminderSettingDao.getRemindersForPlant(plantId)
     suspend fun insertReminder(reminder: ReminderSetting): Long = reminderSettingDao.insertReminder(reminder)
+    suspend fun insertReminders(reminders: List<ReminderSetting>) = reminderSettingDao.insertReminders(reminders)
     suspend fun updateReminder(reminder: ReminderSetting) = reminderSettingDao.updateReminder(reminder)
     suspend fun deleteReminder(reminder: ReminderSetting) = reminderSettingDao.deleteReminder(reminder)
 
